@@ -19,9 +19,35 @@ const links = [
 ];
 
 export default function Sidebar({ open, onClose }) {
-  const { hasRole } = useAuth();
+  const { user } = useAuth();
   const { settings } = useSettings();
-  const visible = links.filter((l) => !l.roles || hasRole(...l.roles));
+  
+  const visible = links.filter((l) => {
+    if (user?.role === 'Admin') return true;
+    if (l.to === '/dashboard') return true;
+    if (l.to === '/settings') return false;
+
+    const permissions = settings?.role_permissions?.[user?.role] ?? {};
+    const routeMap = {
+      '/products': 'products',
+      '/categories': 'categories',
+      '/stock': 'stock',
+      '/purchases': 'purchases',
+      '/sales': 'sales',
+      '/suppliers': 'suppliers',
+      '/customers': 'customers',
+      '/reports': 'reports',
+      '/notifications': 'notifications',
+      '/activity-logs': 'activity-logs',
+      '/users': 'users'
+    };
+    
+    const permissionKey = routeMap[l.to];
+    if (permissionKey !== undefined) {
+      return !!permissions[permissionKey];
+    }
+    return false;
+  });
 
   let lastGroup = null;
   return (

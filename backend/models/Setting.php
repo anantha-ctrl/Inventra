@@ -12,7 +12,8 @@ class Setting extends Model
         'timezone',
         'date_format',
         'enable_alerts',
-        'enable_email'
+        'enable_email',
+        'role_permissions'
     ];
 
     public function __construct()
@@ -33,12 +34,56 @@ class Setting extends Model
             $stmt->execute();
             $row = $stmt->fetch();
         }
+        if ($row) {
+            if (empty($row['role_permissions'])) {
+                $row['role_permissions'] = $this->defaultRolePermissions();
+            } else {
+                $row['role_permissions'] = json_decode($row['role_permissions'], true);
+            }
+        }
         return $row;
+    }
+
+    private function defaultRolePermissions(): array
+    {
+        return [
+            'Staff' => [
+                'products'      => true,
+                'categories'    => true,
+                'stock'         => true,
+                'purchases'     => true,
+                'sales'         => true,
+                'suppliers'     => true,
+                'customers'     => true,
+                'reports'       => true,
+                'notifications' => true,
+                'activity-logs' => false,
+                'users'         => false,
+            ],
+            'Manager' => [
+                'products'      => true,
+                'categories'    => true,
+                'stock'         => true,
+                'purchases'     => true,
+                'sales'         => true,
+                'suppliers'     => true,
+                'customers'     => true,
+                'reports'       => true,
+                'notifications' => true,
+                'activity-logs' => true,
+                'users'         => false,
+            ]
+        ];
     }
 
     /** Save settings. Always updates ID 1. */
     public function saveSettings(array $data): bool
     {
+        if (isset($data['role_permissions'])) {
+            $data['role_permissions'] = is_array($data['role_permissions']) 
+                ? json_encode($data['role_permissions']) 
+                : $data['role_permissions'];
+        }
         $data = $this->only($data);
         if (empty($data)) return false;
         
@@ -65,6 +110,9 @@ class Setting extends Model
             if (!in_array('enable_email', $columns)) {
                 $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN enable_email TINYINT(1) DEFAULT 0");
             }
+            if (!in_array('role_permissions', $columns)) {
+                $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN role_permissions TEXT NULL");
+            }
         } catch (PDOException $e) {
             // Table doesn't exist, create it
             $sql = "CREATE TABLE IF NOT EXISTS {$this->table} (
@@ -78,7 +126,8 @@ class Setting extends Model
                 timezone VARCHAR(100) DEFAULT 'Asia/Kolkata',
                 date_format VARCHAR(20) DEFAULT 'YYYY-MM-DD',
                 enable_alerts TINYINT(1) DEFAULT 1,
-                enable_email TINYINT(1) DEFAULT 0
+                enable_email TINYINT(1) DEFAULT 0,
+                role_permissions TEXT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
             $this->db->exec($sql);
             $this->seedDefaults();
@@ -87,8 +136,9 @@ class Setting extends Model
 
     private function seedDefaults(): void
     {
-        $stmt = $this->db->prepare("INSERT IGNORE INTO {$this->table} (id, company_name, company_email, company_phone, currency, currency_symbol, low_stock_threshold, timezone, date_format, enable_alerts, enable_email) 
-            VALUES (1, 'StockHive', 'support@stockhive.test', '9000000001', 'INR', '₹', 10, 'Asia/Kolkata', 'YYYY-MM-DD', 1, 0)");
-        $stmt->execute();
+        $rolePermsJson = json_encode($this->defaultRolePermissions());
+        $stmt = $this->db->prepare("INSERT IGNORE INTO {$this->table} (id, company_name, company_email, company_phone, currency, currency_symbol, low_stock_threshold, timezone, date_format, enable_alerts, enable_email, role_permissions) 
+            VALUES (1, 'StockHive', 'support@stockhive.test', '9000000001', 'INR', '₹', 10, 'Asia/Kolkata', 'YYYY-MM-DD', 1, 0, ?)");
+        $stmt->execute([$rolePermsJson]);
     }
 }

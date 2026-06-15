@@ -24,6 +24,20 @@ const CURRENCIES = [
   { value: 'AUD', symbol: 'A$', label: 'AUD (Australian Dollar - A$)' },
 ];
 
+const MODULE_MAP = {
+  'products': 'Product Management (Products)',
+  'categories': 'Category Management (Categories)',
+  'stock': 'Stock Movements (Stock)',
+  'purchases': 'Purchase Orders (Purchases)',
+  'sales': 'Sales & Invoicing (Sales)',
+  'suppliers': 'Supplier Management (Suppliers)',
+  'customers': 'Customer Management (Customers)',
+  'reports': 'Analytics & Reports (Reports)',
+  'notifications': 'System Notifications (Notifications)',
+  'activity-logs': 'Activity Audit Logs (Activity Logs)',
+  'users': 'User Accounts CRUD (Users)'
+};
+
 export default function Settings() {
   const { hasRole } = useAuth();
   const isAdmin = hasRole('Admin');
@@ -58,6 +72,22 @@ export default function Settings() {
         if (found) updated.currency_symbol = found.symbol;
       }
       return updated;
+    });
+  };
+
+  const handlePermissionChange = (role, module, isChecked) => {
+    setSettings((prev) => {
+      const updatedPermissions = {
+        ...prev.role_permissions,
+        [role]: {
+          ...prev.role_permissions?.[role],
+          [module]: isChecked,
+        },
+      };
+      return {
+        ...prev,
+        role_permissions: updatedPermissions,
+      };
     });
   };
 
@@ -350,43 +380,51 @@ export default function Settings() {
                       </tr>
                     </thead>
                     <tbody style={{ fontSize: '0.88rem' }}>
-                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td className="fw-semibold text-slate">Product Catalog CRUD</td>
-                        <td className="text-center"><i className="bi bi-eye text-primary" title="View Only" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td className="fw-semibold text-slate">Manual Stock Movements</td>
-                        <td className="text-center"><i className="bi bi-plus-circle text-info" title="Create Movements" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td className="fw-semibold text-slate">Purchase Order Approvals</td>
-                        <td className="text-center"><i className="bi bi-dash text-muted" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td className="fw-semibold text-slate">Activity Log Audit</td>
-                        <td className="text-center"><i className="bi bi-dash text-muted" /></td>
-                        <td className="text-center"><i className="bi bi-eye text-primary" title="View Only" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td className="fw-semibold text-slate">User Accounts CRUD</td>
-                        <td className="text-center"><i className="bi bi-dash text-muted" /></td>
-                        <td className="text-center"><i className="bi bi-dash text-muted" /></td>
-                        <td className="text-center"><i className="bi bi-check-circle-fill text-success" /></td>
-                      </tr>
+                      {Object.keys(MODULE_MAP).map((modKey) => {
+                        const label = MODULE_MAP[modKey];
+                        return (
+                          <tr key={modKey} style={{ borderBottom: '1px solid #f8fafc' }}>
+                            <td className="fw-semibold text-slate">{label}</td>
+                            <td className="text-center">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                checked={!!settings.role_permissions?.Staff?.[modKey]}
+                                disabled={!isAdmin}
+                                onChange={(e) => handlePermissionChange('Staff', modKey, e.target.checked)}
+                              />
+                            </td>
+                            <td className="text-center">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                checked={!!settings.role_permissions?.Manager?.[modKey]}
+                                disabled={!isAdmin}
+                                onChange={(e) => handlePermissionChange('Manager', modKey, e.target.checked)}
+                              />
+                            </td>
+                            <td className="text-center">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                checked={true}
+                                disabled={true}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                <small className="text-muted mt-2 d-block">
+                  <i className="bi bi-info-circle me-1" />
+                  Note: The Dashboard (for both Manager and Staff) and the Logout button are always accessible by default.
+                </small>
               </div>
             )}
 
-            {isAdmin && activeTab !== 'security' && (
+            {isAdmin && (
               <div className="d-flex justify-content-end mt-4 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
                 <button
                   type="submit"

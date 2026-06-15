@@ -8,10 +8,11 @@ require_once __DIR__ . '/config/config.php';
 
 // ----- CORS -----
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-// In development, allow any localhost / 127.0.0.1 origin (any port) so Vite
-// dev servers and preview tools work regardless of the assigned port.
+// In development, allow any localhost / 127.0.0.1 origin (any port) plus private
+// LAN IPs (192.168.x.x, 10.x.x.x, 172.16–31.x.x) so Vite dev servers, preview
+// tools, and other devices on the network (e.g. a phone) work regardless of port.
 $devOrigin = APP_ENV === 'development'
-    && preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $origin);
+    && preg_match('#^https?://(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$#', $origin);
 if ($devOrigin || in_array($origin, CORS_ORIGINS, true)) {
     header("Access-Control-Allow-Origin: $origin");
 }

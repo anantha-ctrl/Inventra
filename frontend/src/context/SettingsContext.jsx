@@ -47,8 +47,6 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     if (!user) return;
     fetchSettings();
-    const interval = setInterval(fetchSettings, 5000); // Poll every 5 seconds for real-time updates!
-    return () => clearInterval(interval);
   }, [user, fetchSettings]);
 
   const saveSettings = useCallback(async (newSettings) => {

@@ -40,6 +40,7 @@ class SettingController extends Controller
             'date_format'         => $req->input('date_format', 'YYYY-MM-DD'),
             'enable_alerts'       => (int) $req->input('enable_alerts', 1),
             'enable_email'        => (int) $req->input('enable_email', 0),
+            'role_permissions'    => $req->input('role_permissions'),
         ]);
 
         if ($success) {
