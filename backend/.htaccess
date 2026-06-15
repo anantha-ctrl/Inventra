@@ -1,0 +1,16 @@
+# Route everything through index.php (except real files like uploaded images)
+RewriteEngine On
+RewriteBase /Inventra/backend/
+
+# Allow direct access to uploaded files
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^uploads/ - [L]
+
+# Send all other requests to the front controller
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Pass Authorization header to PHP (some Apache configs strip it)
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

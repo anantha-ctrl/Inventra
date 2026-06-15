@@ -1,0 +1,15 @@
+# Dependencies
+/frontend/node_modules/
+/backend/vendor/
+
+# Build output
+/frontend/dist/
+
+# Uploaded files (keep the folder, ignore contents)
+/backend/uploads/products/*
+!/backend/uploads/products/.gitkeep
+
+# Env / local
+*.local
+.DS_Store
+Thumbs.db
