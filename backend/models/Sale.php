@@ -2,7 +2,20 @@
 class Sale extends Model
 {
     protected string $table = 'sales';
-    protected array $fillable = ['invoice_no','customer_id','sale_date','subtotal','discount','tax','total_amount','payment_status','notes','created_by'];
+    protected array $fillable = ['invoice_no','customer_id','sale_date','subtotal','discount','tax','tax_rate','total_amount','paid_amount','payment_status','payment_mode','notes','created_by'];
+
+    /** Outstanding-dues report: one row per unpaid/partial invoice. */
+    public function dues(): array
+    {
+        return $this->db->query(
+            'SELECT s.id, s.invoice_no, s.sale_date, s.total_amount, s.paid_amount,
+                    (s.total_amount - s.paid_amount) AS due, s.payment_status,
+                    c.name AS customer_name, c.phone AS customer_phone
+             FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
+             WHERE s.payment_status <> "paid" AND (s.total_amount - s.paid_amount) > 0
+             ORDER BY s.sale_date ASC'
+        )->fetchAll();
+    }
 
     public function paginateJoined(int $page, int $perPage, string $search, array $filters): array
     {
@@ -52,12 +65,16 @@ class Sale extends Model
         if (!$sale) return null;
 
         $itemStmt = $this->db->prepare(
-            'SELECT si.*, p.name AS product_name, p.sku
+            'SELECT si.*, p.name AS product_name, p.sku, p.hsn_code, p.tax_rate AS product_tax_rate, p.unit
              FROM sale_items si JOIN products p ON p.id = si.product_id
              WHERE si.sale_id = ?'
         );
         $itemStmt->execute([$id]);
         $sale['items'] = $itemStmt->fetchAll();
+
+        $payStmt = $this->db->prepare('SELECT id, mode, amount, reference, created_at FROM sale_payments WHERE sale_id = ? ORDER BY id ASC');
+        $payStmt->execute([$id]);
+        $sale['payments'] = $payStmt->fetchAll();
         return $sale;
     }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
+import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import Loader from '../components/Loader';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +31,7 @@ const MODULE_MAP = {
   'stock': 'Stock Movements (Stock)',
   'purchases': 'Purchase Orders (Purchases)',
   'sales': 'Sales & Invoicing (Sales)',
+  'pos': 'POS Billing Terminal (POS)',
   'suppliers': 'Supplier Management (Suppliers)',
   'customers': 'Customer Management (Customers)',
   'reports': 'Analytics & Reports (Reports)',
@@ -45,6 +47,12 @@ export default function Settings() {
 
   const [activeTab, setActiveTab] = useState('general');
   const [saving, setSaving] = useState(false);
+
+  // ----- Per-user access (override role defaults for one specific user) -----
+  const [users, setUsers] = useState([]);
+  const [permUserId, setPermUserId] = useState('');   // '' = role defaults
+  const [permUser, setPermUser] = useState(null);      // fetched user with permissions
+  const [savingUser, setSavingUser] = useState(false);
   const [settings, setSettings] = useState({
     company_name: 'StockHive',
     company_email: 'support@stockhive.test',
@@ -91,6 +99,38 @@ export default function Settings() {
     });
   };
 
+  // Load users (for the per-user access selector). Admin only.
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/users', { params: { per_page: 100 } }).then((r) => setUsers(r.data.data)).catch(() => {});
+  }, [isAdmin]);
+
+  // Fetch the selected user's full record (with permissions).
+  useEffect(() => {
+    if (!permUserId) { setPermUser(null); return; }
+    api.get(`/users/${permUserId}`).then((r) => setPermUser(r.data.data)).catch(() => {});
+  }, [permUserId]);
+
+  const userIsCustom = permUser?.permissions != null;   // object → custom; null → inherit role
+  const setUserCustom = (on) => setPermUser((u) => ({ ...u, permissions: on ? (u.permissions || {}) : null }));
+  const setUserPerm = (key, val) => setPermUser((u) => ({ ...u, permissions: { ...(u.permissions || {}), [key]: val } }));
+
+  const saveUserPerms = async () => {
+    if (!permUser) return;
+    setSavingUser(true);
+    try {
+      await api.put(`/users/${permUser.id}`, {
+        name: permUser.name, email: permUser.email, role_id: permUser.role_id,
+        phone: permUser.phone, status: permUser.status, permissions: permUser.permissions,
+      });
+      toast.success(`Access updated for ${permUser.name}. They must re-login to apply.`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update user access');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!isAdmin) return;
@@ -109,6 +149,7 @@ export default function Settings() {
 
   const tabs = [
     { id: 'general', label: 'Company Profile', icon: 'bi-building', color: '#6366f1' },
+    { id: 'billing', label: 'Billing & GST', icon: 'bi-receipt', color: '#ec4899' },
     { id: 'localization', label: 'Localization', icon: 'bi-globe', color: '#0ea5e9' },
     { id: 'inventory', label: 'Stock Alerts', icon: 'bi-bell', color: '#f59e0b' },
     { id: 'security', label: 'Role Permissions', icon: 'bi-shield-check', color: '#10b981' },
@@ -286,6 +327,36 @@ export default function Settings() {
               </div>
             )}
 
+            {activeTab === 'billing' && (
+              <div>
+                <h5 className="fw-bold mb-4" style={{ fontFamily: 'Outfit' }}>Billing & GST Details</h5>
+                <p className="text-muted mb-4 fs-9">These appear on invoices, thermal receipts and the UPI payment QR in the POS.</p>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="set-label">GSTIN</label>
+                    <input type="text" className="form-control" placeholder="e.g. 33ABCDE1234F1Z5"
+                      value={settings.gstin || ''} disabled={!isAdmin} onChange={(e) => handleChange('gstin', e.target.value)} />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="set-label">State (for CGST/SGST)</label>
+                    <input type="text" className="form-control" placeholder="e.g. Tamil Nadu"
+                      value={settings.shop_state || ''} disabled={!isAdmin} onChange={(e) => handleChange('shop_state', e.target.value)} />
+                  </div>
+                  <div className="col-md-12">
+                    <label className="set-label">Shop Address (printed on receipt)</label>
+                    <input type="text" className="form-control" placeholder="Door no, street, city, pincode"
+                      value={settings.shop_address || ''} disabled={!isAdmin} onChange={(e) => handleChange('shop_address', e.target.value)} />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="set-label">UPI ID (for payment QR)</label>
+                    <input type="text" className="form-control" placeholder="e.g. shopname@okaxis"
+                      value={settings.upi_id || ''} disabled={!isAdmin} onChange={(e) => handleChange('upi_id', e.target.value)} />
+                    <small className="text-muted">Used to auto-generate the scan-to-pay QR at checkout.</small>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'localization' && (
               <div>
                 <h5 className="fw-bold mb-4" style={{ fontFamily: 'Outfit' }}>Localization</h5>
@@ -367,64 +438,111 @@ export default function Settings() {
 
             {activeTab === 'security' && (
               <div>
-                <h5 className="fw-bold mb-4" style={{ fontFamily: 'Outfit' }}>Role-Based Access Rules</h5>
-                <p className="text-muted mb-4 fs-9">Current overview of permissions assigned to system user roles.</p>
-                <div className="table-responsive">
-                  <table className="table align-middle border-0">
-                    <thead>
-                      <tr className="text-muted" style={{ fontSize: '0.82rem', borderBottom: '1px solid #f1f5f9' }}>
-                        <th>MODULE / FEATURE</th>
-                        <th className="text-center">STAFF</th>
-                        <th className="text-center">MANAGER</th>
-                        <th className="text-center">ADMIN</th>
-                      </tr>
-                    </thead>
-                    <tbody style={{ fontSize: '0.88rem' }}>
-                      {Object.keys(MODULE_MAP).map((modKey) => {
-                        const label = MODULE_MAP[modKey];
-                        return (
-                          <tr key={modKey} style={{ borderBottom: '1px solid #f8fafc' }}>
-                            <td className="fw-semibold text-slate">{label}</td>
-                            <td className="text-center">
-                              <input
-                                type="checkbox"
-                                className="form-check-input"
-                                checked={!!settings.role_permissions?.Staff?.[modKey]}
-                                disabled={!isAdmin}
-                                onChange={(e) => handlePermissionChange('Staff', modKey, e.target.checked)}
-                              />
-                            </td>
-                            <td className="text-center">
-                              <input
-                                type="checkbox"
-                                className="form-check-input"
-                                checked={!!settings.role_permissions?.Manager?.[modKey]}
-                                disabled={!isAdmin}
-                                onChange={(e) => handlePermissionChange('Manager', modKey, e.target.checked)}
-                              />
-                            </td>
-                            <td className="text-center">
-                              <input
-                                type="checkbox"
-                                className="form-check-input"
-                                checked={true}
-                                disabled={true}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <h5 className="fw-bold mb-1" style={{ fontFamily: 'Outfit' }}>Role-Based Access Rules</h5>
+                <p className="text-muted mb-3 fs-9">Set defaults per role, or pick a specific user to give them a custom access set.</p>
+
+                {/* Who are we editing? */}
+                <div className="mb-4" style={{ maxWidth: 420 }}>
+                  <label className="set-label">Apply access to</label>
+                  <select className="form-select" value={permUserId} disabled={!isAdmin} onChange={(e) => setPermUserId(e.target.value)}>
+                    <option value="">— Role defaults (all users of a role) —</option>
+                    {users.filter((u) => u.role !== 'Admin').map((u) => (
+                      <option key={u.id} value={u.id}>{u.name} — {u.role} ({u.email})</option>
+                    ))}
+                  </select>
                 </div>
-                <small className="text-muted mt-2 d-block">
-                  <i className="bi bi-info-circle me-1" />
-                  Note: The Dashboard (for both Manager and Staff) and the Logout button are always accessible by default.
-                </small>
+
+                {/* ROLE DEFAULTS view */}
+                {permUserId === '' && (
+                  <>
+                    <div className="table-responsive">
+                      <table className="table align-middle border-0">
+                        <thead>
+                          <tr className="text-muted" style={{ fontSize: '0.82rem', borderBottom: '1px solid #f1f5f9' }}>
+                            <th>MODULE / FEATURE</th>
+                            <th className="text-center">STAFF</th>
+                            <th className="text-center">MANAGER</th>
+                            <th className="text-center">ADMIN</th>
+                          </tr>
+                        </thead>
+                        <tbody style={{ fontSize: '0.88rem' }}>
+                          {Object.keys(MODULE_MAP).map((modKey) => (
+                            <tr key={modKey} style={{ borderBottom: '1px solid #f8fafc' }}>
+                              <td className="fw-semibold text-slate">{MODULE_MAP[modKey]}</td>
+                              <td className="text-center">
+                                <input type="checkbox" className="form-check-input"
+                                  checked={!!settings.role_permissions?.Staff?.[modKey]} disabled={!isAdmin}
+                                  onChange={(e) => handlePermissionChange('Staff', modKey, e.target.checked)} />
+                              </td>
+                              <td className="text-center">
+                                <input type="checkbox" className="form-check-input"
+                                  checked={!!settings.role_permissions?.Manager?.[modKey]} disabled={!isAdmin}
+                                  onChange={(e) => handlePermissionChange('Manager', modKey, e.target.checked)} />
+                              </td>
+                              <td className="text-center">
+                                <input type="checkbox" className="form-check-input" checked readOnly disabled />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <small className="text-muted mt-2 d-block">
+                      <i className="bi bi-info-circle me-1" />
+                      Role defaults apply to every user of that role. Use the dropdown above to override a single user.
+                    </small>
+                  </>
+                )}
+
+                {/* PER-USER view */}
+                {permUserId !== '' && permUser && (
+                  <div className="border rounded-3 p-3 bg-light">
+                    <div className="form-check form-switch mb-2">
+                      <input className="form-check-input" type="checkbox" id="userCustomAccess"
+                        checked={userIsCustom} disabled={!isAdmin} onChange={(e) => setUserCustom(e.target.checked)} />
+                      <label className="form-check-label fw-semibold" htmlFor="userCustomAccess">
+                        Custom access for <strong>{permUser.name}</strong>
+                      </label>
+                    </div>
+
+                    {userIsCustom ? (
+                      <>
+                        <p className="text-muted small mb-2">Tick exactly what this user can access (overrides the {permUser.role} default). E.g. tick only <strong>POS Billing Terminal</strong> for a billing-only staff.</p>
+                        <div className="row g-2">
+                          {Object.keys(MODULE_MAP).map((modKey) => (
+                            <div className="col-md-6" key={modKey}>
+                              <div className="form-check">
+                                <input type="checkbox" className="form-check-input" id={`up-${modKey}`}
+                                  checked={!!permUser.permissions?.[modKey]} disabled={!isAdmin}
+                                  onChange={(e) => setUserPerm(modKey, e.target.checked)} />
+                                <label className="form-check-label" htmlFor={`up-${modKey}`}>{MODULE_MAP[modKey]}</label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <small className="text-muted d-block mt-2"><i className="bi bi-info-circle me-1" />Dashboard is always available. Granting POS auto-allows the product/customer/sales data it needs.</small>
+                      </>
+                    ) : (
+                      <p className="text-muted small mb-0">
+                        <strong>{permUser.name}</strong> inherits the default <strong>{permUser.role}</strong> role permissions. Turn on to give this individual a custom access set.
+                      </p>
+                    )}
+
+                    {isAdmin && (
+                      <div className="text-end mt-3">
+                        <button type="button" className="btn btn-primary" onClick={saveUserPerms} disabled={savingUser}>
+                          {savingUser && <span className="spinner-border spinner-border-sm me-2" />}
+                          Save {permUser.name}'s Access
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {isAdmin && (
+            {/* Hidden while editing one user's access (that panel has its own Save). */}
+            {isAdmin && !(activeTab === 'security' && permUserId) && (
               <div className="d-flex justify-content-end mt-4 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
                 <button
                   type="submit"

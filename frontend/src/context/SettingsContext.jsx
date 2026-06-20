@@ -18,6 +18,10 @@ export function SettingsProvider({ children }) {
     date_format: 'YYYY-MM-DD',
     enable_alerts: true,
     enable_email: false,
+    gstin: '',
+    shop_address: '',
+    shop_state: '',
+    upi_id: '',
   });
   const [loading, setLoading] = useState(true);
 

@@ -11,6 +11,9 @@ import Customers from './pages/Customers';
 import Products from './pages/Products';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
+import POS from './pages/POS';
+import Expenses from './pages/Expenses';
+import DayClose from './pages/DayClose';
 import Stock from './pages/Stock';
 import Notifications from './pages/Notifications';
 import Reports from './pages/Reports';
@@ -27,6 +30,9 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
+      {/* Full-screen POS terminal (its own chrome, outside the dashboard layout) */}
+      <Route path="/pos" element={<ProtectedRoute><POS /></ProtectedRoute>} />
+
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/products" element={<Products />} />
@@ -34,6 +40,12 @@ export default function App() {
         <Route path="/stock" element={<Stock />} />
         <Route path="/purchases" element={<Purchases />} />
         <Route path="/sales" element={<Sales />} />
+        <Route path="/expenses" element={
+          <ProtectedRoute roles={['Admin', 'Manager']}><Expenses /></ProtectedRoute>
+        } />
+        <Route path="/day-close" element={
+          <ProtectedRoute roles={['Admin', 'Manager']}><DayClose /></ProtectedRoute>
+        } />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/reports" element={<Reports />} />

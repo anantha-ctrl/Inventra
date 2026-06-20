@@ -29,6 +29,7 @@ export default function ProtectedRoute({ children, roles }) {
       '/products': 'products',
       '/categories': 'categories',
       '/stock': 'stock',
+      '/pos': 'pos',
       '/purchases': 'purchases',
       '/sales': 'sales',
       '/suppliers': 'suppliers',
@@ -45,8 +46,9 @@ export default function ProtectedRoute({ children, roles }) {
       if (permissionKey === 'settings') {
         return <AccessDenied />;
       }
-      
-      const permissions = settings?.role_permissions?.[user.role] ?? {};
+
+      // Per-user permissions take priority; fall back to role defaults.
+      const permissions = user.permissions ?? settings?.role_permissions?.[user.role] ?? {};
       if (!permissions[permissionKey]) {
         return <AccessDenied />;
       }

@@ -18,6 +18,7 @@ import Loader from './Loader';
 export default function DataTable({
   endpoint, columns, query = {}, toolbar, filters, refreshKey = 0,
   searchable = true, emptyText = 'No records found', perPage = 10,
+  selectable = false, selectedIds = [], onSelectionChange,
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +26,13 @@ export default function DataTable({
   const [pagination, setPagination] = useState({ total: 0, last_page: 1 });
   const [search, setSearch] = useState('');
   const debounce = useRef();
+
+  // Clear selection when rows change to avoid stale ids
+  useEffect(() => {
+    if (selectable && selectedIds.length > 0 && onSelectionChange) {
+      onSelectionChange([]);
+    }
+  }, [rows]);
 
   const queryStr = JSON.stringify(query);
 
@@ -81,24 +89,61 @@ export default function DataTable({
         <table className="sh-table">
           <thead>
             <tr>
-              {columns.map((c) => <th key={c.key} className={c.className}>{c.label}</th>)}
+              {selectable && (
+                <th style={{ width: '40px' }} className="ps-3">
+                  <input
+                    type="checkbox"
+                    className="form-check-input cursor-pointer"
+                    checked={rows.length > 0 && selectedIds.length === rows.length}
+                    onChange={(e) => {
+                      if (onSelectionChange) {
+                        onSelectionChange(e.target.checked ? rows.map((r) => r.id) : []);
+                      }
+                    }}
+                  />
+                </th>
+              )}
+              {columns.map((c, idx) => (
+                <th key={c.key} className={`${c.className || ''} ${idx === 0 && selectable ? 'ps-1' : ''}`}>{c.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={columns.length}><Loader small /></td></tr>
+              <tr><td colSpan={columns.length + (selectable ? 1 : 0)}><Loader small /></td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={columns.length} className="text-center text-muted py-4">{emptyText}</td></tr>
+              <tr><td colSpan={columns.length + (selectable ? 1 : 0)} className="text-center text-muted py-4">{emptyText}</td></tr>
             ) : (
-              rows.map((row, i) => (
-                <tr key={row.id ?? i}>
-                  {columns.map((c) => (
-                    <td key={c.key} className={c.className}>
-                      {c.render ? c.render(row) : (row[c.key] ?? '—')}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.map((row, i) => {
+                const isSelected = selectedIds.includes(row.id);
+                return (
+                  <tr key={row.id ?? i} className={isSelected ? 'table-active' : ''}>
+                    {selectable && (
+                      <td className="ps-3">
+                        <input
+                          type="checkbox"
+                          className="form-check-input cursor-pointer"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (onSelectionChange) {
+                              if (e.target.checked) {
+                                onSelectionChange([...selectedIds, row.id]);
+                              } else {
+                                onSelectionChange(selectedIds.filter((id) => id !== row.id));
+                              }
+                            }
+                          }}
+                        />
+                      </td>
+                    )}
+                    {columns.map((c, idx) => (
+                      <td key={c.key} className={`${c.className || ''} ${idx === 0 && selectable ? 'ps-2' : ''}`}>
+                        {c.render ? c.render(row) : (row[c.key] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

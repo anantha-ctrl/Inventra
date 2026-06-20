@@ -25,13 +25,21 @@ const StatCard = ({ grad, icon, label, value, to }) => (
   </div>
 );
 
+const RANGES = [
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: '7 Days' },
+  { key: 'month', label: 'Month' },
+  { key: 'year', label: 'Year' },
+];
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [range, setRange] = useState('month');
   const { settings } = useSettings();
 
   useEffect(() => {
-    api.get('/dashboard/stats').then((r) => setData(r.data.data)).catch(() => {});
-  }, []);
+    api.get('/dashboard/stats', { params: { range } }).then((r) => setData(r.data.data)).catch(() => {});
+  }, [range]);
 
   if (!data) return <Loader text="Loading dashboard…" />;
 
@@ -62,7 +70,49 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Overview of your inventory & operations" icon="bi-speedometer2" />
+      <PageHeader title="Dashboard" subtitle="Overview of your inventory & operations" icon="bi-speedometer2">
+        <div className="dash-range">
+          {RANGES.map((r) => (
+            <button key={r.key} className={range === r.key ? 'active' : ''} onClick={() => setRange(r.key)}>{r.label}</button>
+          ))}
+        </div>
+      </PageHeader>
+
+      {/* Period summary — reacts to the date-range toggle */}
+      {data.range && (
+        <div className="row g-3 mb-3">
+          <div className="col-md-3 col-6">
+            <div className="sh-card p-3 h-100">
+              <small className="text-muted d-block mb-1">{data.range.label} · Sales</small>
+              <h4 className="mb-0">{money(data.range.sales_total)}</h4>
+              <small className="text-muted">{data.range.sales_count} invoice(s)</small>
+            </div>
+          </div>
+          <div className="col-md-3 col-6">
+            <div className="sh-card p-3 h-100">
+              <small className="text-muted d-block mb-1">{data.range.label} · Purchases</small>
+              <h4 className="mb-0">{money(data.range.purchase_total)}</h4>
+              <small className="text-muted">{data.range.purchase_count} order(s)</small>
+            </div>
+          </div>
+          <div className="col-md-3 col-6">
+            <div className="sh-card p-3 h-100">
+              <small className="text-muted d-block mb-1">Stock Value</small>
+              <h4 className="mb-0">{money(data.stock_value)}</h4>
+              <small className="text-muted">at cost price</small>
+            </div>
+          </div>
+          <div className="col-md-3 col-6">
+            <Link to="/sales" className="text-decoration-none">
+              <div className="sh-card p-3 h-100">
+                <small className="text-muted d-block mb-1">Outstanding Dues</small>
+                <h4 className="mb-0 text-danger">{money(data.total_dues)}</h4>
+                <small className="text-muted">across unpaid invoices</small>
+              </div>
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="row g-3 mb-3">
         <StatCard grad="bg-grad-1" icon="bi-box-seam" label="Total Products" value={data.total_products} to="/products" />

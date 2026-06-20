@@ -7,6 +7,20 @@ class DashboardController extends Controller
         $scalar = fn(string $sql) => (int) $db->query($sql)->fetchColumn();
         $money  = fn(string $sql) => (float) $db->query($sql)->fetchColumn();
 
+        // ----- Date range (today | week | month | year | custom) -----
+        [$from, $to, $rangeLabel] = $this->resolveRange($req);
+        // Prepared range filter for sales/purchases scoped numbers.
+        $rangeMoney = function (string $table, string $dateCol, string $extra = '') use ($db, $from, $to) {
+            $stmt = $db->prepare("SELECT COALESCE(SUM(total_amount),0) FROM $table WHERE $dateCol BETWEEN ? AND ? $extra");
+            $stmt->execute([$from, $to]);
+            return (float) $stmt->fetchColumn();
+        };
+        $rangeCount = function (string $table, string $dateCol) use ($db, $from, $to) {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM $table WHERE $dateCol BETWEEN ? AND ?");
+            $stmt->execute([$from, $to]);
+            return (int) $stmt->fetchColumn();
+        };
+
         $data = [
             'total_products'    => $scalar('SELECT COUNT(*) FROM products'),
             'total_categories'  => $scalar('SELECT COUNT(*) FROM categories'),
@@ -20,6 +34,17 @@ class DashboardController extends Controller
             'revenue'           => $money('SELECT COALESCE(SUM(total_amount),0) FROM sales'),
             'purchase_value'    => $money('SELECT COALESCE(SUM(total_amount),0) FROM purchases WHERE status="received"'),
             'stock_value'       => $money('SELECT COALESCE(SUM(quantity*cost_price),0) FROM products'),
+            'total_dues'        => $money('SELECT COALESCE(SUM(total_amount - paid_amount),0) FROM sales WHERE payment_status<>"paid"'),
+            // ----- Range-scoped figures (react to the dashboard date filter) -----
+            'range' => [
+                'label'          => $rangeLabel,
+                'from'           => $from,
+                'to'             => $to,
+                'sales_count'    => $rangeCount('sales', 'sale_date'),
+                'sales_total'    => $rangeMoney('sales', 'sale_date'),
+                'purchase_count' => $rangeCount('purchases', 'purchase_date'),
+                'purchase_total' => $rangeMoney('purchases', 'purchase_date', 'AND status="received"'),
+            ],
         ];
 
         // Sales last 7 days
@@ -68,5 +93,24 @@ class DashboardController extends Controller
         )->fetchAll();
 
         Response::success($data);
+    }
+
+    /** Resolve ?range=today|week|month|year or ?from=&to= into [from, to, label]. */
+    private function resolveRange(Request $req): array
+    {
+        $today = date('Y-m-d');
+        $from  = trim((string) $req->query('from', ''));
+        $to    = trim((string) $req->query('to', ''));
+        if ($from !== '' && $to !== '') {
+            return [$from, $to, 'Custom'];
+        }
+        $range = (string) $req->query('range', 'month');
+        switch ($range) {
+            case 'today': return [$today, $today, 'Today'];
+            case 'week':  return [date('Y-m-d', strtotime('-6 days')), $today, 'Last 7 days'];
+            case 'year':  return [date('Y-01-01'), $today, 'This year'];
+            case 'month':
+            default:      return [date('Y-m-01'), $today, 'This month'];
+        }
     }
 }

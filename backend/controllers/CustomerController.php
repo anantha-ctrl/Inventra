@@ -61,6 +61,75 @@ class CustomerController extends Controller
         Response::success(null, 'Customer deleted');
     }
 
+    /** Stream all customers as a CSV download. */
+    public function export(Request $req): void
+    {
+        $rows = $this->model->all('name ASC');
+        ActivityLogger::log($this->userId($req), 'export', 'customer', 'Exported customers to CSV');
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="customers_export_' . date('Ymd_His') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        $cols = ['name','email','phone','address','city','status'];
+        fputcsv($out, $cols);
+        foreach ($rows as $r) {
+            fputcsv($out, array_map(fn($c) => $r[$c] ?? '', $cols));
+        }
+        fclose($out);
+        exit;
+    }
+
+    /** Bulk-create customers from an uploaded CSV. */
+    public function import(Request $req): void
+    {
+        $this->authorize($req, ['Admin', 'Manager', 'Staff']);
+        if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            Response::error('Please upload a valid CSV file', 400);
+        }
+        if (($handle = fopen($_FILES['file']['tmp_name'], 'r')) === false) {
+            Response::error('Could not open the uploaded file', 400);
+        }
+        $headers = fgetcsv($handle);
+        if (!$headers) { fclose($handle); Response::error('Empty CSV file', 400); }
+        $headers = array_map(fn($h) => strtolower(trim(preg_replace('/[\x{FEFF}\x{FFFE}]/u', '', $h))), $headers);
+        $idx = fn($name) => array_search($name, $headers);
+        if ($idx('name') === false) {
+            fclose($handle);
+            Response::error('CSV must contain at least a "name" column.', 422);
+        }
+
+        $imported = 0; $skipped = 0; $errors = []; $line = 1;
+        $db = $this->model->db();
+        $db->beginTransaction();
+        try {
+            while (($row = fgetcsv($handle)) !== false) {
+                $line++;
+                if (empty($row) || (count($row) === 1 && trim((string) $row[0]) === '')) continue;
+                $name = trim($row[$idx('name')] ?? '');
+                if ($name === '') { $skipped++; $errors[] = "Line $line: name is required."; continue; }
+                $get = fn($k) => $idx($k) !== false ? trim($row[$idx($k)] ?? '') : '';
+                $status = strtolower($get('status'));
+                $this->model->create([
+                    'name'    => $name,
+                    'email'   => $get('email') ?: null,
+                    'phone'   => $get('phone') ?: null,
+                    'address' => $get('address') ?: null,
+                    'city'    => $get('city') ?: null,
+                    'status'  => in_array($status, ['active','inactive'], true) ? $status : 'active',
+                ]);
+                $imported++;
+            }
+            $db->commit();
+            fclose($handle);
+        } catch (Throwable $e) {
+            $db->rollBack(); fclose($handle);
+            Response::error('Failed to import customers: ' . $e->getMessage(), 500);
+        }
+        ActivityLogger::log($this->userId($req), 'create', 'customer', "Bulk imported $imported customers via CSV");
+        Response::success(['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors],
+            "Import completed: $imported customers added, $skipped skipped.");
+    }
+
     private function payload(Request $req): array
     {
         return [

@@ -13,7 +13,11 @@ class Setting extends Model
         'date_format',
         'enable_alerts',
         'enable_email',
-        'role_permissions'
+        'role_permissions',
+        'gstin',
+        'shop_address',
+        'shop_state',
+        'upi_id'
     ];
 
     public function __construct()
@@ -51,6 +55,7 @@ class Setting extends Model
                 'products'      => true,
                 'categories'    => true,
                 'stock'         => true,
+                'pos'           => true,
                 'purchases'     => true,
                 'sales'         => true,
                 'suppliers'     => true,
@@ -64,6 +69,7 @@ class Setting extends Model
                 'products'      => true,
                 'categories'    => true,
                 'stock'         => true,
+                'pos'           => true,
                 'purchases'     => true,
                 'sales'         => true,
                 'suppliers'     => true,
@@ -112,6 +118,18 @@ class Setting extends Model
             }
             if (!in_array('role_permissions', $columns)) {
                 $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN role_permissions TEXT NULL");
+            }
+            if (!in_array('gstin', $columns)) {
+                $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN gstin VARCHAR(20) NULL");
+            }
+            if (!in_array('shop_address', $columns)) {
+                $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN shop_address VARCHAR(255) NULL");
+            }
+            if (!in_array('shop_state', $columns)) {
+                $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN shop_state VARCHAR(80) NULL");
+            }
+            if (!in_array('upi_id', $columns)) {
+                $this->db->exec("ALTER TABLE {$this->table} ADD COLUMN upi_id VARCHAR(120) NULL");
             }
         } catch (PDOException $e) {
             // Table doesn't exist, create it

@@ -1,25 +1,67 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { useSettings } from '../context/SettingsContext';
+import { money } from '../utils/format';
 import api, { API_ORIGIN } from '../api/client';
 
 export default function Topbar({ onToggleSidebar }) {
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const dropRef = useRef(null);
 
+  // Only show/poll notifications if this role is allowed to (matches the
+  // server-side role_permissions gate so we don't trigger 403 error toasts).
+  const effectivePerms = user?.permissions ?? settings?.role_permissions?.[user?.role] ?? {};
+  const canNotify = user?.role === 'Admin' || !!effectivePerms.notifications;
+
+  // ----- Global search -----
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [mobileSearch, setMobileSearch] = useState(false);   // mobile search overlay
+  const searchRef = useRef(null);
+
   useEffect(() => {
+    if (q.trim().length < 2) { setResults(null); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      api.get('/search', { params: { q } })
+        .then((r) => { setResults(r.data.data); setShowResults(true); })
+        .catch(() => {})
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) { setShowResults(false); setMobileSearch(false); }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const goTo = (path) => { setShowResults(false); setMobileSearch(false); setQ(''); navigate(path); };
+  const hasAnyResult = results && (results.products?.length || results.customers?.length || results.sales?.length);
+
+  useEffect(() => {
+    if (!canNotify) { setUnread(0); return; }
     let active = true;
     const fetchCount = () =>
-      api.get('/notifications/unread-count')
+      api.get('/notifications/unread-count', { skipErrorToast: true })
         .then((r) => active && setUnread(r.data.data.count))
         .catch(() => {});
     fetchCount();
     const t = setInterval(fetchCount, 30000);
     return () => { active = false; clearInterval(t); };
-  }, []);
+  }, [canNotify]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -43,20 +85,102 @@ export default function Topbar({ onToggleSidebar }) {
 
   return (
     <header className="sh-topbar">
-      <button className="btn btn-light d-lg-none" onClick={onToggleSidebar}>
+      {/* Left: menu (mobile) */}
+      <button className="tb-menu-btn d-lg-none" onClick={onToggleSidebar} aria-label="Menu">
         <i className="bi bi-list" />
       </button>
-      <div className="fw-semibold text-muted d-none d-md-block">
-        Inventory Management & Stock Monitoring
+
+      {/* Center: brand / logo (mobile only — desktop shows it in the sidebar) */}
+      <div className="tb-mobile-brand d-lg-none">
+        <i className="bi bi-boxes" />
+        <span>{settings?.company_name || 'Inventra'}</span>
       </div>
-      <div className="d-flex align-items-center gap-3">
+
+      {/* Global search (desktop inline · mobile = overlay toggled by the search icon) */}
+      <div className={`tb-search ${mobileSearch ? 'mobile-open' : ''}`} ref={searchRef}>
+        <i className="bi bi-search tb-search-icon" />
+        <input
+          className="tb-search-input"
+          placeholder="Search products, customers, invoices…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => results && setShowResults(true)}
+        />
+        {showResults && q.trim().length >= 2 && (
+          <div className="tb-search-results">
+            {searching && <div className="tb-search-empty"><span className="spinner-border spinner-border-sm me-2" />Searching…</div>}
+            {!searching && !hasAnyResult && <div className="tb-search-empty">No matches for “{q}”</div>}
+
+            {results?.products?.length > 0 && (
+              <>
+                <div className="tb-search-group-label">Products</div>
+                {results.products.map((p) => (
+                  <div key={`p${p.id}`} className="tb-search-item" onClick={() => goTo('/products')}>
+                    <span className="tb-si-ic" style={{ background: '#eef2ff', color: '#6366f1' }}><i className="bi bi-box-seam" /></span>
+                    <div className="flex-grow-1">
+                      <div className="tb-si-main">{p.name}</div>
+                      <div className="tb-si-sub">{p.sku} · {p.category_name} · {p.quantity} in stock</div>
+                    </div>
+                    <span className="fw-semibold small">{money(p.selling_price)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {results?.customers?.length > 0 && (
+              <>
+                <div className="tb-search-group-label">Customers</div>
+                {results.customers.map((c) => (
+                  <div key={`c${c.id}`} className="tb-search-item" onClick={() => goTo('/customers')}>
+                    <span className="tb-si-ic" style={{ background: '#ecfdf5', color: '#10b981' }}><i className="bi bi-person" /></span>
+                    <div className="flex-grow-1">
+                      <div className="tb-si-main">{c.name}</div>
+                      <div className="tb-si-sub">{[c.phone, c.email, c.city].filter(Boolean).join(' · ') || '—'}</div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {results?.sales?.length > 0 && (
+              <>
+                <div className="tb-search-group-label">Invoices</div>
+                {results.sales.map((s) => (
+                  <div key={`s${s.id}`} className="tb-search-item" onClick={() => goTo('/sales')}>
+                    <span className="tb-si-ic" style={{ background: '#fef3c7', color: '#f59e0b' }}><i className="bi bi-receipt" /></span>
+                    <div className="flex-grow-1">
+                      <div className="tb-si-main">{s.invoice_no}</div>
+                      <div className="tb-si-sub">{s.customer_name || 'Walk-in'} · {s.payment_status}</div>
+                    </div>
+                    <span className="fw-semibold small">{money(s.total_amount)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="d-flex align-items-center gap-2 gap-lg-3 tb-right">
+        {/* Search icon (mobile) — opens the search overlay */}
+        <button className="tb-theme-btn d-lg-none" onClick={() => { setMobileSearch((v) => !v); setTimeout(() => searchRef.current?.querySelector('input')?.focus(), 50); }} aria-label="Search">
+          <i className="bi bi-search" />
+        </button>
+
+        {/* Dark mode toggle */}
+        <button className="tb-theme-btn" onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <i className={`bi ${isDark ? 'bi-sun-fill' : 'bi-moon-stars-fill'}`} />
+        </button>
+
         {/* Notification bell */}
-        <Link to="/notifications" className="tb-bell">
-          <i className="bi bi-bell" />
-          {unread > 0 && (
-            <span className="tb-bell-badge">{unread > 99 ? '99+' : unread}</span>
-          )}
-        </Link>
+        {canNotify && (
+          <Link to="/notifications" className="tb-bell">
+            <i className="bi bi-bell" />
+            {unread > 0 && (
+              <span className="tb-bell-badge">{unread > 99 ? '99+' : unread}</span>
+            )}
+          </Link>
+        )}
 
         {/* Profile dropdown */}
         <div className="tb-profile-wrap" ref={dropRef}>
@@ -138,17 +262,19 @@ export default function Topbar({ onToggleSidebar }) {
                 </div>
                 <i className="bi bi-chevron-right tb-dd-item-arrow" />
               </Link>
-              <Link to="/notifications" className="tb-dd-item" onClick={() => setOpen(false)}>
-                <div className="tb-dd-item-icon" style={{ background: '#ecfdf5', color: '#10b981' }}>
-                  <i className="bi bi-bell" />
-                </div>
-                <div className="tb-dd-item-text">
-                  <span>Notifications</span>
-                  <small>{unread > 0 ? `${unread} unread` : 'All caught up'}</small>
-                </div>
-                {unread > 0 && <span className="tb-dd-notif-badge">{unread}</span>}
-                <i className="bi bi-chevron-right tb-dd-item-arrow" />
-              </Link>
+              {canNotify && (
+                <Link to="/notifications" className="tb-dd-item" onClick={() => setOpen(false)}>
+                  <div className="tb-dd-item-icon" style={{ background: '#ecfdf5', color: '#10b981' }}>
+                    <i className="bi bi-bell" />
+                  </div>
+                  <div className="tb-dd-item-text">
+                    <span>Notifications</span>
+                    <small>{unread > 0 ? `${unread} unread` : 'All caught up'}</small>
+                  </div>
+                  {unread > 0 && <span className="tb-dd-notif-badge">{unread}</span>}
+                  <i className="bi bi-chevron-right tb-dd-item-arrow" />
+                </Link>
+              )}
             </div>
 
             {/* Logout */}

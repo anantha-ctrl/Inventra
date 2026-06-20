@@ -2,8 +2,8 @@
 class Product extends Model
 {
     protected string $table = 'products';
-    protected array $fillable = ['category_id','supplier_id','name','sku','barcode','description','unit',
-        'cost_price','selling_price','quantity','reorder_level','image','status','created_by'];
+    protected array $fillable = ['category_id','supplier_id','name','sku','barcode','hsn_code','description','unit',
+        'cost_price','selling_price','tax_rate','tax_inclusive','quantity','reorder_level','image','status','created_by'];
 
     public function paginateJoined(int $page, int $perPage, string $search, array $filters): array
     {
@@ -57,6 +57,20 @@ class Product extends Model
              WHERE p.id = ? LIMIT 1'
         );
         $stmt->execute([$id]);
+        return $stmt->fetch() ?: null;
+    }
+
+    /** Find an active product by its barcode or SKU (for scanner lookups). */
+    public function findByCode(string $code): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT p.*, c.name AS category_name, s.name AS supplier_name
+             FROM products p
+             JOIN categories c ON c.id = p.category_id
+             LEFT JOIN suppliers s ON s.id = p.supplier_id
+             WHERE (p.barcode = ? OR p.sku = ?) LIMIT 1'
+        );
+        $stmt->execute([$code, $code]);
         return $stmt->fetch() ?: null;
     }
 

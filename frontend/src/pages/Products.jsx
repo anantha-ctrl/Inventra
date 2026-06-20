@@ -4,18 +4,24 @@ import api, { API_ORIGIN } from '../api/client';
 import DataTable from '../components/DataTable';
 import PageHeader from '../components/PageHeader';
 import Modal, { ConfirmModal } from '../components/Modal';
+import BarcodeLabels from '../components/BarcodeLabels';
+import BarcodeScanner from '../components/BarcodeScanner';
 import { useAuth } from '../context/AuthContext';
-import { statusBadge, money } from '../utils/format';
+import { useSettings } from '../context/SettingsContext';
+import { money } from '../utils/format';
 
 const empty = {
-  name: '', category_id: '', supplier_id: '', sku: '', barcode: '', description: '',
-  unit: 'pcs', cost_price: 0, selling_price: 0, quantity: 0, reorder_level: 10, status: 'active',
+  name: '', category_id: '', supplier_id: '', sku: '', barcode: '', hsn_code: '', description: '',
+  unit: 'pcs', cost_price: 0, selling_price: 0, tax_rate: 0, tax_inclusive: 0,
+  quantity: 0, reorder_level: 10, status: 'active',
 };
 
 export default function Products() {
   const { hasRole } = useAuth();
+  const { settings } = useSettings();
   const canEdit = hasRole('Admin', 'Manager');
   const canDelete = hasRole('Admin', 'Manager');
+  const [labelProduct, setLabelProduct] = useState(null);
   const [refresh, setRefresh] = useState(0);
   const [form, setForm] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -28,6 +34,9 @@ export default function Products() {
   const [filterCat, setFilterCat] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showBulkDelConfirm, setShowBulkDelConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Bulk import state
   const [showImport, setShowImport] = useState(false);
@@ -36,8 +45,8 @@ export default function Products() {
   const [importResult, setImportResult] = useState(null);
 
   useEffect(() => {
-    api.get('/categories/list').then((r) => setCats(r.data.data)).catch(() => {});
-    api.get('/suppliers/list').then((r) => setSuppliers(r.data.data)).catch(() => {});
+    api.get('/categories/list').then((r) => setCats(r.data.data)).catch(() => { });
+    api.get('/suppliers/list').then((r) => setSuppliers(r.data.data)).catch(() => { });
   }, []);
 
   const openCreate = async () => {
@@ -47,10 +56,10 @@ export default function Products() {
   };
 
   const downloadTemplate = () => {
-    const headers = ['name', 'category', 'supplier', 'sku', 'barcode', 'unit', 'cost_price', 'selling_price', 'quantity', 'reorder_level', 'description'];
+    const headers = ['name', 'category', 'supplier', 'sku', 'barcode', 'hsn_code', 'unit', 'cost_price', 'selling_price', 'tax_rate', 'tax_inclusive', 'quantity', 'reorder_level', 'description'];
     const rows = [
-      ['Example Wireless Mouse', 'Electronics', 'John Traders', 'ELE-0099', '8901000000999', 'pcs', '250.00', '450.00', '50', '10', 'High precision wireless mouse'],
-      ['Premium Basmati Rice 5kg', 'Groceries', 'Acme Supplies', '', '', 'bag', '500.00', '680.00', '20', '5', 'Long grain basmati rice']
+      ['Example Wireless Mouse', 'Electronics', 'John Traders', 'ELE-0099', '8901000000999', '8471', 'pcs', '250.00', '450.00', '18', '0', '50', '10', 'High precision wireless mouse'],
+      ['Premium Basmati Rice 5kg', 'Groceries', 'Acme Supplies', '', '', '1006', 'bag', '500.00', '680.00', '5', '1', '20', '5', 'Long grain basmati rice']
     ];
     const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -66,13 +75,13 @@ export default function Products() {
   const handleImportSubmit = async (e) => {
     e.preventDefault();
     if (!importFile) return toast.warning('Please select a CSV file to import');
-    
+
     setImporting(true);
     setImportResult(null);
-    
+
     const formData = new FormData();
     formData.append('file', importFile);
-    
+
     try {
       const { data } = await api.post('/products/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -87,6 +96,34 @@ export default function Products() {
       toast.error(err.response?.data?.message || 'Failed to import products');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    try {
+      const res = await api.get('/products/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `products_export_${Date.now()}.csv`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch { /* handled */ }
+  };
+
+  // Scan a physical barcode/QR while adding a product.
+  // If it already exists in the DB → load that product for editing (real-time
+  // lookup); otherwise capture the scanned code into the Barcode field.
+  const scanIntoForm = async (code) => {
+    const value = String(code).trim();
+    if (!value) return;
+    try {
+      const { data } = await api.get('/products/lookup', { params: { code: value }, skipErrorToast: true });
+      const p = data.data;
+      setImageFile(null);
+      setForm({ ...empty, ...p });   // p has an id → save() will UPDATE it
+      toast.info(`"${p.name}" already exists — loaded for editing`);
+    } catch {
+      setForm((f) => ({ ...(f || empty), barcode: value }));
+      toast.success(`Barcode captured: ${value}`);
     }
   };
 
@@ -137,6 +174,34 @@ export default function Products() {
     } catch { /* handled by interceptor */ } finally { setInactivating(false); }
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const { data } = await api.delete('/products/bulk-delete', { data: { ids: selectedIds } });
+      const { deleted_count, skipped_count, skipped_names } = data.data;
+
+      if (deleted_count > 0 && skipped_count === 0) {
+        toast.success(`Successfully deleted ${deleted_count} product(s)`);
+      } else if (deleted_count === 0 && skipped_count > 0) {
+        toast.error(`No products deleted. Selected products have purchase/sales history.`);
+      } else if (deleted_count > 0 && skipped_count > 0) {
+        toast.info(`Deleted ${deleted_count} product(s). Skipped ${skipped_count} product(s) with history.`);
+      }
+
+      if (skipped_names && skipped_names.length > 0) {
+        console.log('Skipped products:', skipped_names);
+      }
+
+      setSelectedIds([]);
+      setShowBulkDelConfirm(false);
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to bulk delete products');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const stockState = (r) => {
     if (r.quantity <= 0) return { tone: 'danger', dot: '#dc2626', label: 'Out of stock' };
     if (r.quantity <= r.reorder_level) return { tone: 'warning', dot: '#f59e0b', label: 'Low' };
@@ -184,6 +249,7 @@ export default function Products() {
       key: 'actions', label: '', className: 'text-end',
       render: (r) => (
         <div className="d-flex gap-1 justify-content-end">
+          <button className="btn btn-sm btn-outline-secondary" title="Print barcode labels" onClick={() => setLabelProduct(r)}><i className="bi bi-upc" /></button>
           {canEdit && <button className="btn btn-sm btn-outline-primary" onClick={() => { setImageFile(null); setForm({ ...r }); }}><i className="bi bi-pencil" /></button>}
           {canDelete && <button className="btn btn-sm btn-outline-danger" onClick={() => setDel(r)}><i className="bi bi-trash" /></button>}
         </div>
@@ -208,7 +274,7 @@ export default function Products() {
           <option value="inactive">Inactive</option>
         </select>
       </div>
-      <div className="form-check form-switch d-inline-flex align-items-center gap-2 ms-2 px-3 py-1.5 bg-white rounded-3 shadow-sm border border-0">
+      <div className="form-check form-switch d-inline-flex align-items-center gap-2 ms-4 px-3 py-2 bg-white rounded-3 shadow-sm">
         <input className="form-check-input cursor-pointer" type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} id="lowsw" />
         <label className="form-check-label small fw-semibold text-muted cursor-pointer" htmlFor="lowsw">Low Stock</label>
       </div>
@@ -226,24 +292,31 @@ export default function Products() {
   return (
     <>
       <PageHeader title="Products" subtitle="Manage inventory products" icon="bi-box-seam">
-        <span className="badge bg-success bg-opacity-10 text-success border border-success-subtle rounded-pill fw-semibold me-3 px-3 py-2 align-middle d-inline-flex align-items-center" style={{ fontSize: '0.8rem' }}>
-          <i className="bi bi-database-check me-2" />
-          Database Connected
-        </span>
-        {canEdit && (
-          <div className="d-flex gap-2">
-            <button className="btn btn-outline-primary" onClick={() => { setShowImport(true); setImportResult(null); setImportFile(null); }} style={{ borderRadius: '10px' }}>
-              <i className="bi bi-file-earmark-arrow-up me-1" /> Import CSV
+        <div className="d-flex flex-wrap gap-2 ph-actions">
+          {canDelete && selectedIds.length > 0 && (
+            <button className="btn btn-danger" onClick={() => setShowBulkDelConfirm(true)} style={{ borderRadius: '10px' }}>
+              <i className="bi bi-trash me-1" /> Delete Selected ({selectedIds.length})
             </button>
-            <button className="btn btn-primary" onClick={openCreate} style={{ borderRadius: '10px' }}>
-              <i className="bi bi-plus-lg me-1" /> Add Product
-            </button>
-          </div>
-        )}
+          )}
+          <button className="btn btn-outline-secondary" onClick={exportCsv} style={{ borderRadius: '10px' }}>
+            <i className="bi bi-file-earmark-arrow-down me-1" /> Export CSV
+          </button>
+          {canEdit && (
+            <>
+              <button className="btn btn-outline-primary" onClick={() => { setShowImport(true); setImportResult(null); setImportFile(null); }} style={{ borderRadius: '10px' }}>
+                <i className="bi bi-file-earmark-arrow-up me-1" /> Import CSV
+              </button>
+              <button className="btn btn-primary" onClick={openCreate} style={{ borderRadius: '10px' }}>
+                <i className="bi bi-plus-lg me-1" /> Add Product
+              </button>
+            </>
+          )}
+        </div>
       </PageHeader>
 
       <DataTable endpoint="/products" columns={columns} refreshKey={refresh} filters={filters}
-        query={{ category_id: filterCat, status: filterStatus, low_stock: lowOnly ? 1 : '' }} />
+        query={{ category_id: filterCat, status: filterStatus, low_stock: lowOnly ? 1 : '' }}
+        selectable={canDelete} selectedIds={selectedIds} onSelectionChange={setSelectedIds} />
 
       <Modal show={!!form} onClose={() => setForm(null)} size="modal-lg" title={form?.id ? 'Edit Product' : 'Add Product'}
         footer={<>
@@ -252,6 +325,11 @@ export default function Products() {
         </>}>
         {form && (
           <form onSubmit={save} className="row">
+            <div className="col-12 mb-3">
+              <label className="form-label"><i className="bi bi-upc-scan me-1" />Scan barcode / QR to auto-fill</label>
+              <BarcodeScanner onScan={scanIntoForm} placeholder="Scan product barcode/QR (USB or camera) or type code + Enter…" />
+              <small className="text-muted">Scans an existing product → loads it; a new code → fills the Barcode field below.</small>
+            </div>
             <div className="col-md-8 mb-3">
               <label className="form-label">Name *</label>
               <input className="form-control" value={form.name} required onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -286,8 +364,26 @@ export default function Products() {
               <input className="form-control" value={form.barcode} placeholder="Auto-generated" disabled={!!form.id}
                 onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
             </div>
+            <div className="col-md-6 mb-3">
+              <label className="form-label">HSN / SAC Code</label>
+              <input className="form-control" value={form.hsn_code || ''} placeholder="e.g. 8471 (for GST)"
+                onChange={(e) => setForm({ ...form, hsn_code: e.target.value })} />
+            </div>
+            <div className="col-md-6 mb-3">
+              <label className="form-label">GST Rate (%)</label>
+              <select className="form-select" value={form.tax_rate} onChange={(e) => setForm({ ...form, tax_rate: e.target.value })}>
+                {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
+              </select>
+            </div>
             {num('Cost Price', 'cost_price', '0.01')}
             {num('Selling Price', 'selling_price', '0.01')}
+            <div className="col-md-6 mb-3 d-flex align-items-end">
+              <div className="form-check form-switch">
+                <input className="form-check-input" type="checkbox" id="taxInc" checked={!!+form.tax_inclusive}
+                  onChange={(e) => setForm({ ...form, tax_inclusive: e.target.checked ? 1 : 0 })} />
+                <label className="form-check-label" htmlFor="taxInc">Selling price is <strong>tax-inclusive</strong> (GST already in price)</label>
+              </div>
+            </div>
             {form.id ? num('Reorder Level', 'reorder_level') : num('Opening Qty', 'quantity')}
             {!form.id && num('Reorder Level', 'reorder_level')}
             <div className="col-md-6 mb-3">
@@ -307,6 +403,8 @@ export default function Products() {
           </form>
         )}
       </Modal>
+
+      <BarcodeLabels product={labelProduct} shopName={settings?.company_name} onClose={() => setLabelProduct(null)} />
 
       <ConfirmModal show={!!del} onClose={() => setDel(null)} onConfirm={remove}
         title="Delete Product" message={`Delete "${del?.name}"? Products with history cannot be deleted.`} />
@@ -331,6 +429,15 @@ export default function Products() {
         }
       />
 
+      <ConfirmModal
+        show={showBulkDelConfirm}
+        onClose={() => setShowBulkDelConfirm(false)}
+        onConfirm={handleBulkDelete}
+        loading={bulkDeleting}
+        title="Delete Selected Products"
+        message={`Are you sure you want to delete the ${selectedIds.length} selected products? Products with purchase or sales history will not be deleted.`}
+      />
+
       {/* CSV Bulk Import Modal */}
       <Modal show={showImport} onClose={() => setShowImport(false)} title="Bulk Import Products via CSV" size="modal-md"
         footer={<>
@@ -341,10 +448,12 @@ export default function Products() {
         </>}>
         <div className="p-1">
           <p className="text-muted small mb-4">
-            Import multiple products at once. Standard columns like SKU, Barcode, etc. are optional. 
-            If the listed Category or Supplier does not exist, they will be automatically created in the database.
+            Import multiple products at once. Only <strong>name</strong> &amp; <strong>category</strong> are required.
+            Optional columns: SKU, Barcode, <strong>hsn_code</strong>, <strong>tax_rate</strong> (GST %),
+            <strong> tax_inclusive</strong> (1/0), unit, cost_price, selling_price, quantity, reorder_level, description.
+            Missing Category/Supplier are auto-created. Auto-generated when SKU/Barcode are blank.
           </p>
-          
+
           <div className="d-grid mb-4">
             <button type="button" className="btn btn-light text-primary border-primary border-dashed py-2.5 fw-semibold" onClick={downloadTemplate}>
               <i className="bi bi-download me-2" /> Download CSV Template

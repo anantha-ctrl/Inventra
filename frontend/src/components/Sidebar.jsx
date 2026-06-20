@@ -7,11 +7,14 @@ const links = [
   { to: '/products', icon: 'bi-box-seam', label: 'Products', group: 'Inventory' },
   { to: '/categories', icon: 'bi-tags', label: 'Categories', group: 'Inventory' },
   { to: '/stock', icon: 'bi-arrow-left-right', label: 'Stock Movements', group: 'Inventory' },
+  { to: '/pos', icon: 'bi-bag-check', label: 'POS Terminal', group: 'Operations' },
   { to: '/purchases', icon: 'bi-cart-plus', label: 'Purchases', group: 'Operations' },
   { to: '/sales', icon: 'bi-receipt', label: 'Sales', group: 'Operations' },
+  { to: '/expenses', icon: 'bi-wallet2', label: 'Expenses', group: 'Operations' },
   { to: '/suppliers', icon: 'bi-truck', label: 'Suppliers', group: 'Operations' },
   { to: '/customers', icon: 'bi-people', label: 'Customers', group: 'Operations' },
   { to: '/reports', icon: 'bi-bar-chart-line', label: 'Reports', group: 'Insights' },
+  { to: '/day-close', icon: 'bi-journal-check', label: 'Day Close', group: 'Insights' },
   { to: '/notifications', icon: 'bi-bell', label: 'Notifications', group: 'Insights' },
   { to: '/activity-logs', icon: 'bi-clock-history', label: 'Activity Logs', group: 'Admin', roles: ['Admin', 'Manager'] },
   { to: '/users', icon: 'bi-person-gear', label: 'Users', group: 'Admin', roles: ['Admin'] },
@@ -26,12 +29,16 @@ export default function Sidebar({ open, onClose }) {
     if (user?.role === 'Admin') return true;
     if (l.to === '/dashboard') return true;
     if (l.to === '/settings') return false;
+    // Expenses & Day Close hold financial data → Manager only (besides Admin).
+    if (l.to === '/expenses' || l.to === '/day-close') return user?.role === 'Manager';
 
-    const permissions = settings?.role_permissions?.[user?.role] ?? {};
+    // Per-user permissions take priority; fall back to role defaults (old sessions).
+    const permissions = user?.permissions ?? settings?.role_permissions?.[user?.role] ?? {};
     const routeMap = {
       '/products': 'products',
       '/categories': 'categories',
       '/stock': 'stock',
+      '/pos': 'pos',
       '/purchases': 'purchases',
       '/sales': 'sales',
       '/suppliers': 'suppliers',

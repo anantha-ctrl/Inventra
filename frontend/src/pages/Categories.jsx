@@ -17,6 +17,9 @@ export default function Categories() {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [del, setDel] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showBulkDel, setShowBulkDel] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const save = async (e) => {
     e.preventDefault();
@@ -39,6 +42,23 @@ export default function Categories() {
     } catch { setDel(null); }
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const { data } = await api.delete('/categories/bulk-delete', { data: { ids: selectedIds } });
+      const deleted = data.data?.deleted ?? 0;
+      const skipped = data.data?.skipped ?? [];
+      if (deleted > 0 && skipped.length === 0) toast.success(`Deleted ${deleted} categor${deleted === 1 ? 'y' : 'ies'}`);
+      else if (deleted === 0 && skipped.length > 0) toast.error('No categories deleted — products are assigned to them.');
+      else toast.info(data.message);
+      setSelectedIds([]);
+      setShowBulkDel(false);
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete categories');
+    } finally { setBulkDeleting(false); }
+  };
+
   const columns = [
     { key: 'name', label: 'Name', render: (r) => <strong>{r.name}</strong> },
     { key: 'description', label: 'Description', render: (r) => r.description || '—' },
@@ -58,10 +78,18 @@ export default function Categories() {
   return (
     <>
       <PageHeader title="Categories" subtitle="Organise products into categories" icon="bi-tags">
-        {canEdit && <button className="btn btn-primary" onClick={() => setForm({ ...empty })}><i className="bi bi-plus-lg me-1" />Add Category</button>}
+        <div className="d-flex flex-wrap gap-2 ph-actions">
+          {canDelete && selectedIds.length > 0 && (
+            <button className="btn btn-danger" onClick={() => setShowBulkDel(true)} style={{ borderRadius: '10px' }}>
+              <i className="bi bi-trash me-1" /> Delete Selected ({selectedIds.length})
+            </button>
+          )}
+          {canEdit && <button className="btn btn-primary" onClick={() => setForm({ ...empty })} style={{ borderRadius: '10px' }}><i className="bi bi-plus-lg me-1" />Add Category</button>}
+        </div>
       </PageHeader>
 
-      <DataTable endpoint="/categories" columns={columns} refreshKey={refresh} />
+      <DataTable endpoint="/categories" columns={columns} refreshKey={refresh}
+        selectable={canDelete} selectedIds={selectedIds} onSelectionChange={setSelectedIds} />
 
       <Modal show={!!form} onClose={() => setForm(null)} title={form?.id ? 'Edit Category' : 'Add Category'}
         footer={<>
@@ -96,6 +124,11 @@ export default function Categories() {
 
       <ConfirmModal show={!!del} onClose={() => setDel(null)} onConfirm={remove}
         title="Delete Category" message={`Delete category "${del?.name}"? This cannot be undone.`} />
+
+      <ConfirmModal show={showBulkDel} onClose={() => setShowBulkDel(false)} onConfirm={handleBulkDelete}
+        loading={bulkDeleting} title="Delete Selected Categories"
+        confirmText={`Delete ${selectedIds.length}`}
+        message={`Delete the ${selectedIds.length} selected categor${selectedIds.length === 1 ? 'y' : 'ies'}? Categories that still have products assigned will be skipped. This cannot be undone.`} />
     </>
   );
 }

@@ -4,6 +4,7 @@ import api from '../api/client';
 import DataTable from '../components/DataTable';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
+import BarcodeScanner from '../components/BarcodeScanner';
 import { useAuth } from '../context/AuthContext';
 import { fmtDateTime } from '../utils/format';
 
@@ -35,6 +36,16 @@ export default function Stock() {
     setForm({ product_id: '', type, quantity: 1, note: '' });
 
   const currentStock = products.find((p) => String(p.id) === String(form?.product_id))?.quantity ?? 0;
+
+  const selectByCode = async (code) => {
+    try {
+      const { data } = await api.get('/products/lookup', { params: { code }, skipErrorToast: true });
+      setForm((f) => ({ ...f, product_id: data.data.id }));
+      toast.success(`Selected ${data.data.name}`, { autoClose: 1000 });
+    } catch {
+      toast.error(`No product found for "${code}"`);
+    }
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -91,6 +102,10 @@ export default function Stock() {
               <select className="form-select" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                 {allowedTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+            </div>
+            <div className="mb-3">
+              <label className="form-label">Scan barcode / SKU</label>
+              <BarcodeScanner onScan={selectByCode} placeholder="Scan or type code + Enter to select product…" compact />
             </div>
             <div className="mb-3">
               <label className="form-label">Product *</label>

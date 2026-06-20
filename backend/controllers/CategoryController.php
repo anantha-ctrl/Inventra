@@ -69,4 +69,53 @@ class CategoryController extends Controller
         ActivityLogger::log($this->userId($req), 'delete', 'category', "Deleted category #$id");
         Response::success(null, 'Category deleted');
     }
+
+    /** Bulk delete — categories that still have products assigned are skipped. */
+    public function bulkDestroy(Request $req): void
+    {
+        $this->authorize($req, ['Admin', 'Manager']);
+        $ids = $req->input('ids');
+        if (!is_array($ids) || empty($ids)) Response::error('No category IDs provided', 422);
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        $db = $this->model->db();
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        // Find categories that are still in use by products — these are skipped.
+        $usedStmt = $db->prepare("SELECT DISTINCT category_id FROM products WHERE category_id IN ($placeholders)");
+        $usedStmt->execute($ids);
+        $usedIds = array_map('intval', $usedStmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $idsToDelete = array_values(array_diff($ids, $usedIds));
+
+        $skippedNames = [];
+        if (!empty($usedIds)) {
+            $ph = implode(',', array_fill(0, count($usedIds), '?'));
+            $nameStmt = $db->prepare("SELECT name FROM categories WHERE id IN ($ph)");
+            $nameStmt->execute($usedIds);
+            $skippedNames = $nameStmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+
+        $deletedCount = 0;
+        if (!empty($idsToDelete)) {
+            $ph = implode(',', array_fill(0, count($idsToDelete), '?'));
+            $db->beginTransaction();
+            try {
+                $stmt = $db->prepare("DELETE FROM categories WHERE id IN ($ph)");
+                $stmt->execute($idsToDelete);
+                $deletedCount = $stmt->rowCount();
+                $db->commit();
+                ActivityLogger::log($this->userId($req), 'delete', 'category', "Bulk deleted $deletedCount categories");
+            } catch (Exception $e) {
+                $db->rollBack();
+                Response::error('Failed to delete categories', 500);
+            }
+        }
+
+        $msg = "$deletedCount categor" . ($deletedCount === 1 ? 'y' : 'ies') . ' deleted';
+        if (!empty($skippedNames)) {
+            $msg .= '. Skipped (products assigned): ' . implode(', ', $skippedNames);
+        }
+        Response::success(['deleted' => $deletedCount, 'skipped' => $skippedNames], $msg);
+    }
 }

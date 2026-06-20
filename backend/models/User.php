@@ -2,7 +2,27 @@
 class User extends Model
 {
     protected string $table = 'users';
-    protected array $fillable = ['role_id','name','email','password','phone','avatar','status','reset_token','reset_token_expiry','last_login'];
+    protected array $fillable = ['role_id','name','email','password','phone','avatar','status','permissions','reset_token','reset_token_expiry','last_login'];
+
+    /**
+     * Effective module permissions for a user row (must include 'role' and may
+     * include the raw 'permissions' JSON). Per-user permissions override the
+     * role defaults; Admin always gets full access ([] = unrestricted on FE).
+     */
+    public function resolvePermissions(array $user): array
+    {
+        if (($user['role'] ?? null) === 'Admin') return [];
+        if (!empty($user['permissions'])) {
+            $p = json_decode($user['permissions'], true);
+            if (is_array($p)) return $p;
+        }
+        try {
+            $settings = (new Setting())->get();
+            return $settings['role_permissions'][$user['role']] ?? [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
 
     /** Find a user joined with role name. */
     public function findWithRole(int $id): ?array

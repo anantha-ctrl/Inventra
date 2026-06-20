@@ -42,10 +42,17 @@ class AuthMiddleware
             }
 
             try {
-                $settingModel = new Setting();
-                $settings = $settingModel->get();
-                $permissions = $settings['role_permissions'] ?? null;
-                if ($permissions && isset($permissions[$userRole])) {
+                // Effective permissions for THIS user (per-user overrides role
+                // defaults; falls back to the role map when the user has none).
+                $userModel = new User();
+                $dbUser = $userModel->find((int) ($req->user['id'] ?? 0));
+                $perms = [];
+                if ($dbUser) {
+                    $dbUser['role'] = $userRole;
+                    $perms = $userModel->resolvePermissions($dbUser);
+                }
+
+                if (!empty($perms)) {
                     $uri = $_SERVER['REQUEST_URI'] ?? '';
                     $uri = parse_url($uri, PHP_URL_PATH);
                     $base = '/Inventra/backend';
@@ -72,8 +79,20 @@ class AuthMiddleware
 
                     if (isset($map[$module])) {
                         $permissionKey = $map[$module];
-                        if (empty($permissions[$userRole][$permissionKey])) {
-                            Response::error('Access to ' . $permissionKey . ' is disabled for your role', 403);
+                        $allowed = !empty($perms[$permissionKey]);
+
+                        // The POS terminal must read products & customers and create
+                        // sales — so granting "pos" implies access to those endpoints
+                        // even when the standalone module pages are switched off.
+                        $posImplies = ['products', 'customers', 'sales'];
+                        if (!$allowed
+                            && !empty($perms['pos'])
+                            && in_array($permissionKey, $posImplies, true)) {
+                            $allowed = true;
+                        }
+
+                        if (!$allowed) {
+                            Response::error('Access to ' . $permissionKey . ' is disabled for your account', 403);
                         }
                     }
                 }

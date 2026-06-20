@@ -82,6 +82,7 @@ $router->get('/categories/list',     fn($r) => (new CategoryController())->listA
 $router->get('/categories/{id}',     fn($r,$p) => (new CategoryController())->show($r,$p), $allRoles);
 $router->post('/categories',         fn($r) => (new CategoryController())->store($r), $adminOrManager);
 $router->put('/categories/{id}',     fn($r,$p) => (new CategoryController())->update($r,$p), $adminOrManager);
+$router->delete('/categories/bulk-delete', fn($r) => (new CategoryController())->bulkDestroy($r), $adminOrManager);
 $router->delete('/categories/{id}',  fn($r,$p) => (new CategoryController())->destroy($r,$p), $adminOrManager);
 
 // Suppliers
@@ -92,9 +93,14 @@ $router->post('/suppliers',          fn($r) => (new SupplierController())->store
 $router->put('/suppliers/{id}',      fn($r,$p) => (new SupplierController())->update($r,$p), $adminOrManager);
 $router->delete('/suppliers/{id}',   fn($r,$p) => (new SupplierController())->destroy($r,$p), $adminOrManager);
 
+// Global search (omni-search)
+$router->get('/search',              fn($r) => (new SearchController())->global($r), $allRoles);
+
 // Customers
 $router->get('/customers',           fn($r) => (new CustomerController())->index($r), $allRoles);
 $router->get('/customers/list',      fn($r) => (new CustomerController())->listAll($r), $allRoles);
+$router->get('/customers/export',    fn($r) => (new CustomerController())->export($r), $allRoles);
+$router->post('/customers/import',   fn($r) => (new CustomerController())->import($r), $allRoles);
 $router->get('/customers/{id}',      fn($r,$p) => (new CustomerController())->show($r,$p), $allRoles);
 $router->post('/customers',          fn($r) => (new CustomerController())->store($r), $allRoles);
 $router->put('/customers/{id}',      fn($r,$p) => (new CustomerController())->update($r,$p), $allRoles);
@@ -104,10 +110,13 @@ $router->delete('/customers/{id}',   fn($r,$p) => (new CustomerController())->de
 $router->get('/products',            fn($r) => (new ProductController())->index($r), $allRoles);
 $router->get('/products/list',       fn($r) => (new ProductController())->listAll($r), $allRoles);
 $router->get('/products/generate-codes', fn($r) => (new ProductController())->generateCodes($r), $adminOrManager);
+$router->get('/products/lookup',     fn($r) => (new ProductController())->lookup($r), $allRoles);
+$router->get('/products/export',     fn($r) => (new ProductController())->export($r), $allRoles);
 $router->post('/products/import',    fn($r) => (new ProductController())->import($r), $adminOrManager);
 $router->get('/products/{id}',       fn($r,$p) => (new ProductController())->show($r,$p), $allRoles);
 $router->post('/products',           fn($r) => (new ProductController())->store($r), $adminOrManager);
 $router->put('/products/{id}',       fn($r,$p) => (new ProductController())->update($r,$p), $adminOrManager);
+$router->delete('/products/bulk-delete', fn($r) => (new ProductController())->bulkDestroy($r), $adminOrManager);
 $router->delete('/products/{id}',    fn($r,$p) => (new ProductController())->destroy($r,$p), $adminOrManager);
 
 // Purchases
@@ -120,8 +129,10 @@ $router->post('/purchases/{id}/cancel',  fn($r,$p) => (new PurchaseController())
 
 // Sales
 $router->get('/sales',               fn($r) => (new SalesController())->index($r), $allRoles);
+$router->get('/sales/dues',          fn($r) => (new SalesController())->dues($r), $allRoles);
 $router->get('/sales/{id}',          fn($r,$p) => (new SalesController())->show($r,$p), $allRoles);
 $router->post('/sales',              fn($r) => (new SalesController())->store($r), $allRoles);
+$router->post('/sales/{id}/payment', fn($r,$p) => (new SalesController())->recordPayment($r,$p), $allRoles);
 $router->delete('/sales/{id}',       fn($r,$p) => (new SalesController())->destroy($r,$p), $adminOnly);
 
 // Stock / inventory
@@ -135,6 +146,21 @@ $router->get('/notifications/unread-count',fn($r) => (new NotificationController
 $router->put('/notifications/{id}/read',   fn($r,$p) => (new NotificationController())->markRead($r,$p), $allRoles);
 $router->put('/notifications/read-all',    fn($r) => (new NotificationController())->markAllRead($r), $allRoles);
 $router->delete('/notifications/{id}',     fn($r,$p) => (new NotificationController())->destroy($r,$p), $allRoles);
+
+// Expenses
+$router->get('/expenses',            fn($r) => (new ExpenseController())->index($r), $adminOrManager);
+$router->post('/expenses',           fn($r) => (new ExpenseController())->store($r), $adminOrManager);
+$router->put('/expenses/{id}',       fn($r,$p) => (new ExpenseController())->update($r,$p), $adminOrManager);
+$router->delete('/expenses/{id}',    fn($r,$p) => (new ExpenseController())->destroy($r,$p), $adminOrManager);
+
+// Held sales (park / resume bill)
+$router->get('/held-sales',          fn($r) => (new HeldSaleController())->index($r), $allRoles);
+$router->post('/held-sales',         fn($r) => (new HeldSaleController())->store($r), $allRoles);
+$router->delete('/held-sales/{id}',  fn($r,$p) => (new HeldSaleController())->destroy($r,$p), $allRoles);
+
+// POS reports: day-close (Z-report) & GST summary
+$router->get('/pos/z-report',        fn($r) => (new PosController())->zReport($r), $adminOrManager);
+$router->get('/pos/gst-report',      fn($r) => (new PosController())->gstReport($r), $adminOrManager);
 
 // Reports & exports
 $router->get('/reports/{type}',        fn($r,$p) => (new ReportController())->data($r,$p), $allRoles);

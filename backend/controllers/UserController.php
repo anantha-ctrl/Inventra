@@ -21,8 +21,15 @@ class UserController extends Controller
         $this->authorize($req, ['Admin']);
         $user = $this->model->findWithRole((int) $p['id']);
         if (!$user) Response::error('User not found', 404);
+        $user['permissions'] = !empty($user['permissions']) ? json_decode($user['permissions'], true) : null;
         unset($user['password'], $user['reset_token']);
         Response::success($user);
+    }
+
+    /** Normalize a permissions map → JSON string, or null to inherit role. */
+    private function normalizePermissions($val): ?string
+    {
+        return (is_array($val) && count($val)) ? json_encode($val) : null;
     }
 
     public function store(Request $req): void
@@ -44,6 +51,7 @@ class UserController extends Controller
             'password' => password_hash($req->input('password'), PASSWORD_BCRYPT),
             'phone'    => $req->input('phone'),
             'status'   => $req->input('status', 'active'),
+            'permissions' => $this->normalizePermissions($req->input('permissions')),
         ]);
         ActivityLogger::log($this->userId($req), 'create', 'user', "Created user " . $req->input('email'));
         Response::success(['id' => $id], 'User created', 201);
@@ -63,6 +71,7 @@ class UserController extends Controller
             'email'   => $req->input('email'),
             'phone'   => $req->input('phone'),
             'status'  => $req->input('status', 'active'),
+            'permissions' => $this->normalizePermissions($req->input('permissions')),
         ];
         if ($req->input('password')) {
             $data['password'] = password_hash($req->input('password'), PASSWORD_BCRYPT);

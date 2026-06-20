@@ -41,6 +41,10 @@ class SettingController extends Controller
             'enable_alerts'       => (int) $req->input('enable_alerts', 1),
             'enable_email'        => (int) $req->input('enable_email', 0),
             'role_permissions'    => $req->input('role_permissions'),
+            'gstin'               => $req->input('gstin'),
+            'shop_address'        => $req->input('shop_address'),
+            'shop_state'          => $req->input('shop_state'),
+            'upi_id'              => $req->input('upi_id'),
         ]);
 
         if ($success) {

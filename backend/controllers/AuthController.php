@@ -40,6 +40,7 @@ class AuthController extends Controller
                 'phone' => $user['phone'],
                 'role'  => $user['role'],
                 'avatar'=> $user['avatar'],
+                'permissions' => $this->users->resolvePermissions($user),
             ],
         ], 'Login successful');
     }
@@ -48,6 +49,7 @@ class AuthController extends Controller
     {
         $user = $this->users->findWithRole($this->userId($req));
         if (!$user) Response::error('User not found', 404);
+        $user['permissions'] = $this->users->resolvePermissions($user);
         unset($user['password'], $user['reset_token']);
         Response::success($user);
     }

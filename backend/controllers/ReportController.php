@@ -4,7 +4,9 @@ class ReportController extends Controller
     private Report $report;
     public function __construct() { $this->report = new Report(); }
 
-    private array $valid = ['product', 'inventory', 'purchase', 'sales', 'supplier', 'customer', 'profit'];
+    private array $valid = ['product', 'inventory', 'purchase', 'sales', 'supplier', 'customer', 'profit',
+        'gst', 'hsn', 'payments', 'dues', 'expense', 'pnl', 'sales_summary',
+        'stock_valuation', 'low_stock', 'dead_stock', 'stock_ledger', 'cashier', 'customer_ledger'];
 
     /** JSON report data for on-screen rendering. */
     public function data(Request $req, array $p): void

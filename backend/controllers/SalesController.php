@@ -43,8 +43,32 @@ class SalesController extends Controller
             $subtotal += ((int) $it['quantity']) * ((float) $it['unit_price']);
         }
         $discount = (float) $req->input('discount', 0);
-        $tax      = (float) $req->input('tax', 0);
+        $taxRate  = (float) $req->input('tax_rate', 0);   // GST %
+        // If a GST rate is supplied, derive the tax amount from the taxable base;
+        // otherwise fall back to a flat tax amount (backward compatible).
+        $taxable  = max(0, $subtotal - $discount);
+        $tax      = $taxRate > 0 ? round($taxable * $taxRate / 100, 2) : (float) $req->input('tax', 0);
         $total    = $subtotal - $discount + $tax;
+
+        // Payment / dues — supports split payments (cash + upi + card …).
+        $payments = $req->input('payments', null);   // [{mode, amount, reference}]
+        $validModes = ['cash', 'upi', 'card', 'other'];
+        if (is_array($payments) && count($payments)) {
+            $payments = array_values(array_filter($payments, fn($pm) => (float) ($pm['amount'] ?? 0) > 0));
+            $paid = 0;
+            foreach ($payments as $pm) $paid += (float) ($pm['amount'] ?? 0);
+        } else {
+            $payments = null;
+            $paid = $req->input('paid_amount', null);
+            $paid = $paid === null ? $total : (float) $paid;   // default: fully paid
+        }
+        $paid = max(0, min($paid, $total));
+        $payStatus = $paid <= 0 ? 'unpaid' : ($paid >= $total ? 'paid' : 'partial');
+
+        // Primary payment mode label
+        if ($payments && count($payments) > 1)      $payMode = 'split';
+        elseif ($payments && count($payments) === 1) $payMode = in_array($payments[0]['mode'] ?? 'cash', $validModes, true) ? $payments[0]['mode'] : 'cash';
+        else $payMode = in_array($req->input('payment_mode', 'cash'), $validModes, true) ? $req->input('payment_mode', 'cash') : 'cash';
 
         $stock = new StockTransaction();
         $db = $this->model->db();
@@ -58,8 +82,11 @@ class SalesController extends Controller
                 'subtotal'       => $subtotal,
                 'discount'       => $discount,
                 'tax'            => $tax,
+                'tax_rate'       => $taxRate,
                 'total_amount'   => $total,
-                'payment_status' => $req->input('payment_status', 'paid'),
+                'paid_amount'    => $paid,
+                'payment_status' => $payStatus,
+                'payment_mode'   => $payMode,
                 'notes'          => $req->input('notes'),
                 'created_by'     => $this->userId($req),
             ]);
@@ -76,6 +103,17 @@ class SalesController extends Controller
                     'sale', $saleId, "Sold via $invoiceNo", $this->userId($req)
                 );
             }
+
+            // Record payment breakdown (split or single).
+            $payStmt = $db->prepare('INSERT INTO sale_payments (sale_id, mode, amount, reference) VALUES (?, ?, ?, ?)');
+            if ($payments) {
+                foreach ($payments as $pm) {
+                    $mode = in_array($pm['mode'] ?? 'cash', $validModes, true) ? $pm['mode'] : 'cash';
+                    $payStmt->execute([$saleId, $mode, (float) $pm['amount'], $pm['reference'] ?? null]);
+                }
+            } elseif ($paid > 0) {
+                $payStmt->execute([$saleId, $payMode, $paid, null]);
+            }
             $db->commit();
         } catch (Throwable $e) {
             $db->rollBack();
@@ -88,6 +126,46 @@ class SalesController extends Controller
         }
         ActivityLogger::log($this->userId($req), 'create', 'sale', "Created invoice $invoiceNo");
         Response::success(['id' => $saleId, 'invoice_no' => $invoiceNo], 'Sale recorded', 201);
+    }
+
+    /** Outstanding dues across all unpaid/partial invoices. */
+    public function dues(Request $req): void
+    {
+        $rows = $this->model->dues();
+        $total = array_sum(array_map(fn($r) => (float) $r['due'], $rows));
+        Response::success(['rows' => $rows, 'total_due' => $total, 'count' => count($rows)]);
+    }
+
+    /** Record a payment against an invoice; recomputes payment status. */
+    public function recordPayment(Request $req, array $p): void
+    {
+        $this->authorize($req, ['Admin', 'Manager', 'Staff']);
+        $id   = (int) $p['id'];
+        $sale = $this->model->find($id);
+        if (!$sale) Response::error('Sale not found', 404);
+
+        $amount = (float) $req->input('amount', 0);
+        if ($amount <= 0) Response::error('Payment amount must be greater than zero', 422);
+
+        $newPaid = (float) $sale['paid_amount'] + $amount;
+        $total   = (float) $sale['total_amount'];
+        if ($newPaid > $total + 0.001) {
+            Response::error('Payment exceeds the outstanding balance', 422);
+        }
+        $status = $newPaid <= 0 ? 'unpaid' : ($newPaid >= $total ? 'paid' : 'partial');
+        $validModes = ['cash', 'upi', 'card', 'other'];
+        $mode = in_array($req->input('mode', 'cash'), $validModes, true) ? $req->input('mode', 'cash') : 'cash';
+
+        $this->model->update($id, ['paid_amount' => round($newPaid, 2), 'payment_status' => $status]);
+        $this->model->db()->prepare('INSERT INTO sale_payments (sale_id, mode, amount, reference) VALUES (?, ?, ?, ?)')
+            ->execute([$id, $mode, $amount, $req->input('reference')]);
+        ActivityLogger::log($this->userId($req), 'update', 'sale',
+            "Recorded $mode payment of $amount on {$sale['invoice_no']}");
+        Response::success([
+            'paid_amount'    => round($newPaid, 2),
+            'due'            => round($total - $newPaid, 2),
+            'payment_status' => $status,
+        ], 'Payment recorded');
     }
 
     public function destroy(Request $req, array $p): void

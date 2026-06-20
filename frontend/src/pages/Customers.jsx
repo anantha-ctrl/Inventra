@@ -19,6 +19,54 @@ export default function Customers() {
   const [del, setDel] = useState(null);
   const [view, setView] = useState(null);
 
+  // Bulk import/export state
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+
+  const exportCsv = async () => {
+    try {
+      const res = await api.get('/customers/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `customers_export_${Date.now()}.csv`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch { /* handled */ }
+  };
+
+  const downloadTemplate = () => {
+    const headers = ['name', 'email', 'phone', 'address', 'city', 'status'];
+    const rows = [
+      ['Ravi Kumar', 'ravi@mail.test', '7700000001', '12 MG Road', 'Chennai', 'active'],
+      ['Priya Sharma', 'priya@mail.test', '7700000002', '5 Park St', 'Pune', 'active'],
+    ];
+    const csv = '﻿' + [headers.join(','), ...rows.map((r) => r.map((v) => `"${v}"`).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'customers_import_template.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  const handleImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!importFile) return toast.warning('Please select a CSV file to import');
+    setImporting(true); setImportResult(null);
+    const fd = new FormData();
+    fd.append('file', importFile);
+    try {
+      const { data } = await api.post('/customers/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setImportResult(data.data);
+      toast.success(data.message || 'Import completed');
+      setRefresh((r) => r + 1);
+      setImportFile(null);
+      const fi = document.getElementById('custCsvInput');
+      if (fi) fi.value = '';
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to import customers');
+    } finally { setImporting(false); }
+  };
+
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -68,7 +116,17 @@ export default function Customers() {
   return (
     <>
       <PageHeader title="Customers" subtitle="Manage customers and purchase history" icon="bi-people">
-        {canEdit && <button className="btn btn-primary" onClick={() => setForm({ ...empty })}><i className="bi bi-plus-lg me-1" />Add Customer</button>}
+        <div className="d-flex gap-2">
+          <button className="btn btn-outline-secondary" onClick={exportCsv}><i className="bi bi-file-earmark-arrow-down me-1" />Export CSV</button>
+          {canEdit && (
+            <>
+              <button className="btn btn-outline-primary" onClick={() => { setShowImport(true); setImportResult(null); setImportFile(null); }}>
+                <i className="bi bi-file-earmark-arrow-up me-1" />Import CSV
+              </button>
+              <button className="btn btn-primary" onClick={() => setForm({ ...empty })}><i className="bi bi-plus-lg me-1" />Add Customer</button>
+            </>
+          )}
+        </div>
       </PageHeader>
 
       <DataTable endpoint="/customers" columns={columns} refreshKey={refresh} />
@@ -125,6 +183,45 @@ export default function Customers() {
 
       <ConfirmModal show={!!del} onClose={() => setDel(null)} onConfirm={remove}
         title="Delete Customer" message={`Delete customer "${del?.name}"?`} />
+
+      {/* CSV Bulk Import */}
+      <Modal show={showImport} onClose={() => setShowImport(false)} title="Bulk Import Customers via CSV" size="modal-md"
+        footer={<>
+          <button className="btn btn-light" onClick={() => setShowImport(false)}>Close</button>
+          <button className="btn btn-primary" onClick={handleImportSubmit} disabled={importing || !importFile}>
+            {importing && <span className="spinner-border spinner-border-sm me-2" />}Upload & Import
+          </button>
+        </>}>
+        <div className="p-1">
+          <p className="text-muted small mb-4">Import many customers at once. Only the <strong>name</strong> column is required; email, phone, address, city and status are optional.</p>
+          <div className="d-grid mb-4">
+            <button type="button" className="btn btn-light text-primary border-primary py-2 fw-semibold" onClick={downloadTemplate}>
+              <i className="bi bi-download me-2" />Download CSV Template
+            </button>
+          </div>
+          <form onSubmit={handleImportSubmit}>
+            <label className="form-label fw-bold">Select CSV File <span className="text-danger">*</span></label>
+            <div className="input-group">
+              <span className="input-group-text"><i className="bi bi-filetype-csv text-muted" /></span>
+              <input type="file" id="custCsvInput" className="form-control" accept=".csv" required onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
+            </div>
+          </form>
+          {importResult && (
+            <div className="alert alert-info border-0 shadow-sm mt-3 p-3">
+              <h6 className="fw-bold mb-2"><i className="bi bi-info-circle-fill me-2" />Import Summary</h6>
+              <ul className="mb-0 small ps-3">
+                <li>Imported: <strong>{importResult.imported}</strong></li>
+                <li>Skipped: <strong>{importResult.skipped}</strong></li>
+              </ul>
+              {importResult.errors?.length > 0 && (
+                <div className="bg-light p-2 rounded small border text-danger overflow-auto mt-2" style={{ maxHeight: 120, fontFamily: 'monospace' }}>
+                  {importResult.errors.map((er, i) => <div key={i}>{er}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </>
   );
 }

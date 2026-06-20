@@ -36,6 +36,7 @@ CREATE TABLE users (
   phone               VARCHAR(30)    DEFAULT NULL,
   avatar              VARCHAR(255)   DEFAULT NULL,
   status              ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  permissions         TEXT           DEFAULT NULL,
   reset_token         VARCHAR(120)   DEFAULT NULL,
   reset_token_expiry  DATETIME       DEFAULT NULL,
   last_login          DATETIME       DEFAULT NULL,
@@ -115,10 +116,13 @@ CREATE TABLE products (
   name              VARCHAR(180)   NOT NULL,
   sku               VARCHAR(60)    NOT NULL,
   barcode           VARCHAR(60)    DEFAULT NULL,
+  hsn_code          VARCHAR(20)    DEFAULT NULL,
   description       TEXT           DEFAULT NULL,
   unit              VARCHAR(30)    NOT NULL DEFAULT 'pcs',
   cost_price        DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
   selling_price     DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
+  tax_rate          DECIMAL(5,2)   NOT NULL DEFAULT 0.00,
+  tax_inclusive     TINYINT(1)     NOT NULL DEFAULT 0,
   quantity          INT            NOT NULL DEFAULT 0,
   reorder_level     INT            NOT NULL DEFAULT 10,
   image             VARCHAR(255)   DEFAULT NULL,
@@ -215,8 +219,11 @@ CREATE TABLE sales (
   subtotal          DECIMAL(14,2)  NOT NULL DEFAULT 0.00,
   discount          DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
   tax               DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
+  tax_rate          DECIMAL(5,2)   NOT NULL DEFAULT 0.00,
   total_amount      DECIMAL(14,2)  NOT NULL DEFAULT 0.00,
+  paid_amount       DECIMAL(14,2)  NOT NULL DEFAULT 0.00,
   payment_status    ENUM('paid','partial','unpaid') NOT NULL DEFAULT 'paid',
+  payment_mode      VARCHAR(20)    NOT NULL DEFAULT 'cash',
   notes             VARCHAR(255)   DEFAULT NULL,
   created_by        INT UNSIGNED   DEFAULT NULL,
   created_at        TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -311,6 +318,61 @@ CREATE TABLE activity_logs (
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- 15. sale_payments  (split / multi-mode payments per invoice)
+-- ----------------------------------------------------------------------------
+CREATE TABLE sale_payments (
+  id          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  sale_id     INT UNSIGNED  NOT NULL,
+  mode        ENUM('cash','upi','card','other') NOT NULL DEFAULT 'cash',
+  amount      DECIMAL(14,2) NOT NULL,
+  reference   VARCHAR(80)   DEFAULT NULL,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_sale_payments_sale (sale_id),
+  KEY idx_sale_payments_mode (mode),
+  CONSTRAINT fk_sale_payments_sale FOREIGN KEY (sale_id) REFERENCES sales (id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- 16. held_sales  (parked carts — hold / resume bill in POS)
+-- ----------------------------------------------------------------------------
+CREATE TABLE held_sales (
+  id          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  label       VARCHAR(80)   DEFAULT NULL,
+  customer_id INT UNSIGNED  DEFAULT NULL,
+  cart        LONGTEXT      NOT NULL,
+  note        VARCHAR(255)  DEFAULT NULL,
+  created_by  INT UNSIGNED  DEFAULT NULL,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_held_customer (customer_id),
+  CONSTRAINT fk_held_customer FOREIGN KEY (customer_id) REFERENCES customers (id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT fk_held_user FOREIGN KEY (created_by) REFERENCES users (id)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- 17. expenses  (shop running costs — for true profit)
+-- ----------------------------------------------------------------------------
+CREATE TABLE expenses (
+  id            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  category      VARCHAR(80)   NOT NULL,
+  amount        DECIMAL(14,2) NOT NULL,
+  expense_date  DATE          NOT NULL,
+  payment_mode  VARCHAR(20)   NOT NULL DEFAULT 'cash',
+  note          VARCHAR(255)  DEFAULT NULL,
+  created_by    INT UNSIGNED  DEFAULT NULL,
+  created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_expenses_date (expense_date),
+  KEY idx_expenses_category (category),
+  CONSTRAINT fk_expenses_user FOREIGN KEY (created_by) REFERENCES users (id)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================================
@@ -376,6 +438,11 @@ INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal) VAL
   (2, 3, 1, 620.00, 620.00),
   (3, 1, 1, 450.00, 450.00),
   (3, 5, 1, 140.00, 140.00);
+
+-- Mark seeded paid invoices as fully paid (cash) so dues/Z-reports are accurate.
+UPDATE sales SET paid_amount = total_amount WHERE payment_status = 'paid';
+INSERT INTO sale_payments (sale_id, mode, amount)
+SELECT id, 'cash', paid_amount FROM sales WHERE paid_amount > 0;
 
 INSERT INTO notifications (type, title, message, reference_id, is_read) VALUES
   ('low_stock',         'Low stock alert',        'USB-C Cable 1m is below reorder level (8/20)', 2, 0),
