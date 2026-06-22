@@ -49,6 +49,7 @@ export default function App() {
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/:type" element={<Reports />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/change-password" element={<ChangePassword />} />

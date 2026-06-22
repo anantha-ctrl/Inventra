@@ -24,7 +24,7 @@ const links = [
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
   const { settings } = useSettings();
-  
+
   const visible = links.filter((l) => {
     if (user?.role === 'Admin') return true;
     if (l.to === '/dashboard') return true;
@@ -48,7 +48,7 @@ export default function Sidebar({ open, onClose }) {
       '/activity-logs': 'activity-logs',
       '/users': 'users'
     };
-    
+
     const permissionKey = routeMap[l.to];
     if (permissionKey !== undefined) {
       return !!permissions[permissionKey];
@@ -61,7 +61,7 @@ export default function Sidebar({ open, onClose }) {
     <>
       <aside className={`sh-sidebar ${open ? 'open' : ''}`}>
         <div className="brand">
-          <i className="bi bi-boxes" /> {settings?.company_name || 'StockHive'}
+          <i className="bi bi-boxes" /> {settings?.company_name || 'Inventra Mart'}
         </div>
         <nav className="sh-nav">
           {visible.map((l) => {

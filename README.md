@@ -46,7 +46,8 @@ Inventra/
         ├── api/client.js           # Axios instance + interceptors
         ├── context/                # AuthContext (JWT + roles), SettingsContext, ThemeContext
         ├── components/             # Layout, Sidebar, Topbar, Receipt, BarcodeScanner, BarcodeLabels, …
-        ├── pages/                  # Dashboard, Products, Sales, POS, Expenses, DayClose, Reports, Settings, …
+        ├── data/reports.js         # Shared report-type metadata (dashboard + sidebar)
+        ├── pages/                  # Dashboard, Products, Sales, POS, Expenses, DayClose, Reports, Settings, Landing, …
         └── utils/format.js
 ```
 
@@ -256,7 +257,7 @@ All demo users share the password **`Password@123`**.
 - **Stock** — stock in/out/adjustment/damaged/returned, immutable movement ledger, real-time quantity updates.
 - **Global Search** — search products, customers and invoices from the top bar.
 - **Notifications** — low-stock / out-of-stock / purchase-approval alerts (gated per permission).
-- **Reports (20 types)** — product, inventory, purchase, sales, supplier, customer, profit · **GST/Tax, HSN summary, payment-mode, outstanding dues** · **expense, profit & loss, sales summary** · **stock valuation, low-stock/reorder, dead/slow stock, stock-movement ledger** · **cashier/salesperson, customer ledger** — all exportable to **PDF / Excel / CSV / Print**.
+- **Reports (20 types)** — a grouped **card dashboard** (Sales & Performance · Tax & GST · Financial Statements · Inventory & Stock · Purchases & Partners) that deep-links (`/reports/:type`) to each report: product, inventory, purchase, sales, supplier, customer, profit · **GST/Tax, HSN summary, payment-mode, outstanding dues** · **expense, profit & loss, sales summary** · **stock valuation, low-stock/reorder, dead/slow stock, stock-movement ledger** · **cashier/salesperson, customer ledger** — all exportable to **PDF / Excel / CSV / Print**.
 - **System Settings** — timezone, currency, business contact info, **GST & shop details** (GSTIN, shop address/state, UPI ID), default thresholds, role & per-user permissions.
 - **Audit Logs** — login, CRUD, stock, settings, and export activity with IP/user-agent.
 - **UX** — **dark mode** toggle, mobile-responsive top bar, installable **PWA** (offline app shell).
@@ -467,6 +468,13 @@ A chronological log of how Inventra Mart grew from a base inventory app into a f
 - Thermal receipt print fixed to a clean **80/58mm slip** (`@page` sizing, no browser header/footer, no A4 stretch).
 - UPI QR amount robustly 2-decimal formatted so apps reliably auto-fill.
 - Page-header / filter button spacing fixes; removed the "Database Connected" badge; tidied filter toggle gaps.
+
+### Phase 10 — Reports redesign, landing & housekeeping
+- **Reports redesigned into a grouped card dashboard** (`/reports`) — categorised tiles that deep-link to each report at `/reports/:type`; report metadata extracted to a shared `data/reports.js` (single source for the page + sidebar). Detail view is now full-width with an **All Reports** back button.
+- **Bulk delete for categories** (mirrors products) with in-use safety skips.
+- **Landing page** rebranded to Inventra Mart, refreshed features/roles to the current POS + GST feature set, fixed alignment and a dead nav anchor.
+- **Vite HMR** websocket pinned to `localhost` to stop dev-only "failed to connect" warnings.
+- README expanded with Mermaid **architecture, workflow, ER & role diagrams** and this development journey.
 
 ---
 

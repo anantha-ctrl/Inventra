@@ -1,0 +1,347 @@
+================================================================================
+                          INVENTRA MART
+            Inventory Management & POS Billing System
+                      P R O J E C T   R E P O R T
+================================================================================
+
+Project Title : Inventra Mart - Inventory Management & POS Billing System
+Type          : Full-stack Web Application (with PWA support)
+Frontend      : React 18 + Vite
+Backend       : PHP 8 (custom MVC REST API, JWT auth)
+Database      : MySQL 8 (database name: stockhive)
+Author        : CloudHawk (anantha-ctrl)
+Document Date : 2026-06-22
+
+
+--------------------------------------------------------------------------------
+1. ABSTRACT
+--------------------------------------------------------------------------------
+Inventra Mart is a full-stack, role-based inventory management and
+point-of-sale (POS) billing system designed for retail shops. It unifies
+product catalog management, purchase and supplier handling, real-time stock
+tracking, fast POS billing with GST, multi-mode payments, expense tracking,
+end-of-day reporting and a 20-report analytics suite into a single secure
+workspace. Access is controlled by both roles and granular per-user
+permissions, enforced on the client and the server. The application is
+installable as a Progressive Web App (PWA) and ships with dark mode, a
+barcode/QR scanner, thermal GST receipts and UPI-QR based payments.
+
+
+--------------------------------------------------------------------------------
+2. OBJECTIVES
+--------------------------------------------------------------------------------
+- Provide a single platform to manage products, stock, purchases and sales.
+- Offer a fast, dedicated POS billing terminal usable with keyboard/scanner.
+- Support Indian GST billing (CGST/SGST split, HSN codes, tax-inclusive prices).
+- Handle multiple payment modes (cash / UPI / card), split and partial payments.
+- Track business expenses and produce an end-of-day Z-report.
+- Deliver comprehensive, exportable analytics (PDF / Excel / CSV / Print).
+- Enforce strict role-based and per-user access control.
+- Keep all data real-time and connected to a MySQL backend.
+
+
+--------------------------------------------------------------------------------
+3. TECHNOLOGY STACK
+--------------------------------------------------------------------------------
+Frontend    : React 18, Vite, Bootstrap 5, Bootstrap Icons, Chart.js,
+              Axios, React Router, React-Toastify
+POS extras  : html5-qrcode (camera scan), qrcode.react (UPI QR),
+              jsbarcode (barcode labels)
+Backend     : PHP 8 - custom lightweight MVC + REST router,
+              self-contained JWT (HS256)
+Database    : MySQL 8 - 17 normalized tables + a low-stock view +
+              a dynamically-ensured settings table
+Exports     : TCPDF (PDF) + PhpSpreadsheet (Excel) via Composer;
+              native CSV & printable-HTML fallbacks otherwise
+PWA         : Web App Manifest + service worker (installable, offline shell)
+
+
+--------------------------------------------------------------------------------
+4. SYSTEM ARCHITECTURE
+--------------------------------------------------------------------------------
+The application follows a clean client-server separation:
+
+  [ React SPA ]  --HTTP/JSON + Bearer JWT-->  [ PHP REST API ]  -->  [ MySQL ]
+
+Frontend (React SPA):
+  - Pages & Components (Dashboard, Products, POS, Reports, ...)
+  - Context providers: AuthContext (JWT + roles), SettingsContext, ThemeContext
+  - Axios client with JWT interceptor for all API calls
+
+Backend (PHP custom MVC):
+  - Router (index.php) maps every route to a controller
+  - AuthMiddleware verifies JWT and checks role + per-user permissions
+  - Controllers (one per module) handle requests
+  - Models (PDO, prepared statements) talk to MySQL
+  - Helpers: Exporter (PDF/Excel/CSV), Notifier, ActivityLogger
+
+Request lifecycle:
+  1. User logs in -> POST /auth/login -> server verifies and returns JWT + user
+     (role + effective permissions).
+  2. Each protected request sends the Bearer JWT.
+  3. AuthMiddleware validates the token and the module permission.
+  4. Allowed -> controller -> model -> MySQL -> JSON response.
+     Denied  -> HTTP 403 -> "Access Denied" screen on the client.
+
+
+--------------------------------------------------------------------------------
+5. MODULES & FEATURES
+--------------------------------------------------------------------------------
+5.1 Authentication & RBAC
+    - JWT login/logout, forgot/change password.
+    - Role-based AND per-user route + API guards.
+    - Activity logging and a premium "Access Denied" display.
+
+5.2 Dashboard
+    - Totals, revenue, low-stock alerts, recent activity.
+    - Sales-vs-purchases bar chart, category doughnut, 7-day sales line chart,
+      top products, date-range filter.
+
+5.3 Categories / Suppliers / Customers
+    - CRUD, search, status, history tracking.
+    - Bulk delete with in-use safety checks.
+
+5.4 Products
+    - CRUD, image upload, auto SKU + barcode generation.
+    - Barcode/QR scan to auto-fill, printable barcode labels.
+    - HSN codes, GST %, tax-inclusive pricing, reorder levels, filters.
+    - Bulk CSV import/export, bulk delete.
+
+5.5 Purchases
+    - Purchase orders with pending -> approved -> received workflow.
+    - Receiving updates stock automatically.
+
+5.6 Sales
+    - Multi-line entry, stock-availability checks, auto invoice numbers.
+    - Printable GST invoices, payments & dues.
+
+5.7 POS Terminal (dedicated full-screen billing)
+    - Live product grid, barcode scan, customer selector, cart.
+    - Quick keys: F2 new, F4 pay, F9 hold, / search.
+    - Hold / resume bills.
+    - Split payments (cash / UPI / card), partial payment.
+    - UPI QR with the bill amount pre-filled.
+    - Thermal 58mm / 80mm GST receipt (CGST/SGST split, HSN), print-ready.
+
+5.8 Expenses
+    - Category-wise business expense tracking (CRUD).
+
+5.9 Day Close
+    - End-of-day Z-report: sales totals, payment-mode breakdown, GST summary.
+
+5.10 Stock
+    - In / out / adjustment / damaged / returned movements.
+    - Immutable movement ledger, real-time quantity updates.
+
+5.11 Global Search
+    - Search products, customers and invoices from the top bar.
+
+5.12 Notifications
+    - Low-stock / out-of-stock / purchase-approval alerts (permission-gated).
+
+5.13 Reports (20 types)
+    - Grouped card dashboard that deep-links to each report (/reports/:type):
+      * Sales & Performance : sales, sales summary, profit, payment-mode, cashier
+      * Tax & GST (Billing)  : GST/Tax, HSN summary
+      * Financial Statements : profit & loss, expense, outstanding dues,
+                               customer ledger
+      * Inventory & Stock    : product, inventory, stock valuation,
+                               low-stock/reorder, dead/slow stock, stock ledger
+      * Purchases & Partners : purchase, supplier, customer
+    - All exportable to PDF / Excel / CSV / Print.
+
+5.14 System Settings
+    - Timezone, currency, business contact info.
+    - GST & shop details (GSTIN, shop address/state, UPI ID).
+    - Default thresholds, role & per-user permissions.
+
+5.15 Audit Logs
+    - Login, CRUD, stock, settings and export activity with IP/user-agent.
+
+5.16 UX
+    - Dark mode toggle, mobile-responsive top bar.
+    - Installable PWA with offline app shell.
+
+
+--------------------------------------------------------------------------------
+6. ROLE-BASED ACCESS CONTROL
+--------------------------------------------------------------------------------
+Roles:
+  Admin    - Full system control: users, deletes, settings, audit logs.
+  Manager  - Inventory, purchases (approve), sales, POS, expenses,
+             day-close, reports.
+  Staff    - POS / sales, stock movements, create purchases
+             (scope tunable per user).
+
+Permission resolution:
+  - On login the effective permissions are computed.
+  - If a user has a per-user override (users.permissions JSON) it is used;
+    otherwise the role default (settings.role_permissions) applies.
+  - The same effective permissions gate BOTH the sidebar/routes (frontend)
+    and the API (AuthMiddleware) - the client is never trusted.
+  - Example: Staff-1 can be POS-only while Staff-2 gets a different module set.
+
+
+--------------------------------------------------------------------------------
+7. DATABASE DESIGN (normalized)
+--------------------------------------------------------------------------------
+Tables (17) + a v_low_stock view + a dynamic settings table:
+  roles, users, categories, suppliers, customers, products, product_images,
+  purchases, purchase_items, sales, sale_items, stock_transactions,
+  notifications, activity_logs, sale_payments, held_sales, expenses
+
+Key POS/GST columns added:
+  products : hsn_code, tax_rate, tax_inclusive
+  sales    : tax_rate, paid_amount, payment_mode
+  users    : permissions (per-user JSON overrides)
+
+Integrity:
+  - Foreign keys with ON UPDATE/DELETE rules.
+  - Indexes on lookup/search columns.
+  - Unique constraints on email, sku, barcode, invoice_no, reference.
+
+Core relationships:
+  roles 1--* users
+  categories 1--* products ;  suppliers 1--* products ;  suppliers 1--* purchases
+  products 1--* product_images / purchase_items / sale_items / stock_transactions
+  purchases 1--* purchase_items
+  customers 1--* sales ;  customers 1--* held_sales
+  sales 1--* sale_items ;  sales 1--* sale_payments
+  users 1--* (purchases, sales, stock_transactions, expenses, held_sales,
+              activity_logs)
+
+
+--------------------------------------------------------------------------------
+8. PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+Inventra/
+  database/
+    stockhive.sql                 Full schema + seed + low-stock view
+    upgrade_features.sql          Migration: GST / payments / held sales / expenses
+    upgrade_pos.sql               POS-related migration
+    upgrade_user_permissions.sql  Per-user permissions migration
+  backend/                        PHP REST API
+    index.php                     Front controller + routes
+    .htaccess                     Clean-URL rewriting + Auth passthrough
+    composer.json                 Optional TCPDF / PhpSpreadsheet deps
+    config/                       config.php (DB/JWT), Database.php (PDO)
+    core/                         Router, Controller, Model, Request,
+                                  Response, JWT, Validator
+    controllers/                  One per module (POS, Expense, HeldSale, ...)
+    models/                       One per table + Report & Setting models
+    middleware/                   AuthMiddleware (JWT + RBAC + per-user perms)
+    helpers/                      ActivityLogger, Notifier, Exporter
+    uploads/                      Product images + user avatars
+  frontend/                       React SPA
+    .env                          VITE_API_BASE
+    public/                       manifest.webmanifest, sw.js, PWA icons
+    src/
+      api/client.js               Axios instance + interceptors
+      context/                    Auth, Settings, Theme contexts
+      components/                 Layout, Sidebar, Topbar, Receipt,
+                                  BarcodeScanner, BarcodeLabels, ...
+      data/reports.js             Shared report-type metadata
+      pages/                      Dashboard, Products, Sales, POS, Expenses,
+                                  DayClose, Reports, Settings, Landing, ...
+      utils/format.js
+
+
+--------------------------------------------------------------------------------
+9. SETUP & INSTALLATION
+--------------------------------------------------------------------------------
+Prerequisites:
+  - XAMPP (Apache + PHP 8.1+) or PHP built-in server
+  - MySQL 8
+  - Node.js 18+
+
+Step 1 - Database:
+  Import database/stockhive.sql (creates the stockhive DB, tables, view and
+  demo data) via MySQL CLI or phpMyAdmin / MySQL Workbench.
+  NOTE: stockhive.sql is self-complete and safe for a fresh DB. For an existing
+  DB with data, run the idempotent upgrade_*.sql migrations instead of
+  re-importing stockhive.sql.
+
+Step 2 - Backend:
+  Edit backend/config/config.php with DB credentials:
+    DB_HOST = 127.0.0.1 ; DB_PORT = 3306 ; DB_NAME = stockhive
+    DB_USER = root ; DB_PASS = <your_password>
+  With XAMPP the API is served at http://localhost/Inventra/backend
+  Optional true PDF/XLSX exports: cd backend && composer install
+
+Step 3 - Frontend:
+  cd frontend
+  npm install
+  npm run dev      # http://localhost:5173
+  npm run build    # production build -> dist/
+  API URL is read from frontend/.env -> VITE_API_BASE
+
+
+--------------------------------------------------------------------------------
+10. DEMO ACCOUNTS
+--------------------------------------------------------------------------------
+All demo users share the password: Password@123
+
+  Admin    : admin@stockhive.test
+  Manager  : manager@stockhive.test
+  Staff    : staff@stockhive.test
+
+
+--------------------------------------------------------------------------------
+11. DEVELOPMENT JOURNEY (PHASES)
+--------------------------------------------------------------------------------
+Phase 1  - Core inventory foundation: MVC backend, JWT auth, Products,
+           Purchases, Sales, Stock movements, Notifications, Dashboard,
+           Audit Logs, base Reports (7 types).
+Phase 2  - POS billing suite: POS Terminal, barcode scan, quick keys,
+           hold/resume bills, thermal GST receipt.
+Phase 3  - GST/Tax: HSN, GST %, tax-inclusive pricing, GSTIN/shop/UPI settings.
+Phase 4  - Payments & dues: split payments (cash/UPI/card), UPI QR with amount.
+Phase 5  - Expenses module + Day Close (Z-report).
+Phase 6  - Granular access control: per-user permissions + specific-user
+           selector in settings.
+Phase 7  - Reports expansion 7 -> 20 report builders.
+Phase 8  - UX, scanning & PWA: barcode scanner, bulk import/export,
+           bulk delete, dark mode, mobile top bar, global search, PWA.
+Phase 9  - Polish & fixes: thermal print slip fix, UPI amount formatting,
+           button spacing, removed "Database Connected" badge.
+Phase 10 - Reports redesigned into a grouped card dashboard with deep-links,
+           bulk category delete, landing-page rebrand & alignment, Vite HMR
+           localhost fix, README diagrams & journey.
+
+
+--------------------------------------------------------------------------------
+12. SECURITY
+--------------------------------------------------------------------------------
+- Passwords hashed with password_hash (bcrypt).
+- All write endpoints validate input and enforce role + per-user permissions
+  on the server (the client is never trusted).
+- Prepared statements (PDO) everywhere - no string-concatenated SQL.
+- JWT_SECRET must be changed and APP_ENV set to production before any
+  non-local deployment.
+
+
+--------------------------------------------------------------------------------
+13. FUTURE ENHANCEMENTS
+--------------------------------------------------------------------------------
+- Purchase return / sales return (credit notes).
+- Product variants and batch/expiry tracking.
+- WhatsApp / SMS invoice and dues reminders.
+- Customer loyalty / points and discount coupons.
+- Multi-store / branch support.
+- AI-based sales forecasting and smart reorder suggestions.
+- Online payment gateway (e.g. Razorpay) integration.
+- Full offline billing with queue + sync.
+
+
+--------------------------------------------------------------------------------
+14. CONCLUSION
+--------------------------------------------------------------------------------
+Inventra Mart delivers a complete, production-style retail solution covering
+the entire flow from purchase to point-of-sale, with GST-compliant billing,
+multi-mode payments, real-time stock control, granular access management and
+a rich, exportable analytics suite - all backed by a normalized MySQL database
+and a secure PHP REST API, and presented through a fast, installable React PWA.
+
+================================================================================
+                    (c) 2026 Inventra Mart - CloudHawk
+================================================================================
